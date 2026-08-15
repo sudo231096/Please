@@ -28,6 +28,16 @@ const TOOL_NAMES := {
 	"stone_crossbow": "Кам. арбалет",
 	"stone_rod": "Кам. удочка",
 }
+const BUILD_ORDER := ["wood_block", "wood_wall", "wood_floor", "wood_pillar", "stone_block", "stone_wall", "campfire"]
+const BUILD_NAMES := {
+	"wood_block": "Дер. блок",
+	"wood_wall": "Дер. стена",
+	"wood_floor": "Дер. пол",
+	"wood_pillar": "Дер. столб",
+	"stone_block": "Кам. блок",
+	"stone_wall": "Кам. стена",
+	"campfire": "Костёр",
+}
 
 var _tab := 0  # 0 inv, 1 craft
 var _content: VBoxContainer
@@ -267,6 +277,48 @@ func _fill_inv() -> void:
 		empty.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 		_content.add_child(empty)
 
+	var h_build := Label.new()
+	h_build.text = "Стройматериалы"
+	h_build.add_theme_font_size_override("font_size", 22)
+	h_build.modulate = Color(0.85, 0.95, 0.85)
+	_content.add_child(h_build)
+
+	var any_b := false
+	var bgrid := GridContainer.new()
+	bgrid.columns = 2
+	bgrid.add_theme_constant_override("h_separation", 10)
+	bgrid.add_theme_constant_override("v_separation", 10)
+	bgrid.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_content.add_child(bgrid)
+	for id in BUILD_ORDER:
+		var c := Inv.count(id)
+		if c <= 0:
+			continue
+		any_b = true
+		var mark := " ★" if Controls.build_piece == id else ""
+		var bg := Color(0.22, 0.24, 0.18) if Controls.build_piece == id else Color(0.18, 0.22, 0.20)
+		var card := _slot_card(BUILD_NAMES.get(id, id), "× %d%s" % [c, mark], bg, "")
+		# select for build
+		var bid := id
+		var bname := BUILD_NAMES.get(id, id)
+		var btn := Button.new()
+		btn.flat = true
+		btn.set_anchors_preset(Control.PRESET_FULL_RECT)
+		btn.pressed.connect(func() -> void:
+			Controls.build_piece = bid
+			Controls.build_mode = true
+			_status.text = "Выбрано для стройки: %s" % bname
+			_rebuild_body()
+		)
+		card.add_child(btn)
+		bgrid.add_child(card)
+	if not any_b:
+		var eb := Label.new()
+		eb.text = "Нет блоков — скрафть во вкладке Крафт, потом режим СТРОЙ"
+		eb.add_theme_font_size_override("font_size", 18)
+		eb.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		_content.add_child(eb)
+
 	var uneq := Button.new()
 	uneq.text = "Убрать из рук (кулак)"
 	uneq.custom_minimum_size = Vector2(0, 48)
@@ -367,8 +419,14 @@ func _recipe_row(id: String, rec: Dictionary) -> PanelContainer:
 	var craft_name := str(rec["name"])
 	btn.pressed.connect(func() -> void:
 		if CraftDBScr.craft(craft_id):
-			Controls.equipped = craft_id
-			_status.text = "Скрафчено и экипировано: %s" % craft_name
+			if CraftDBScr.is_build_piece(craft_id):
+				Controls.build_piece = craft_id
+				_status.text = "Скрафчено: %s (для стройки)" % craft_name
+			elif Inv.is_tool(craft_id):
+				Controls.equipped = craft_id
+				_status.text = "Скрафчено и экипировано: %s" % craft_name
+			else:
+				_status.text = "Скрафчено: %s" % craft_name
 			_rebuild_body()
 		else:
 			_status.text = "Не хватает ресурсов"

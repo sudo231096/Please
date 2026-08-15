@@ -1,10 +1,14 @@
 extends CharacterBody3D
-## Игрок от первого лица. Видна рука/кулак, покачивание при ходьбе, анимация удара при атаке.
+## FPS-игрок: рука + модели инструментов, прицел-рейкаст, стройка блоков.
 
 const GRAV := 22.0
 const SPEED := 6.0
 const JUMP := 7.5
 const MAX_HP := 100
+const BUILD_RANGE := 6.0
+const GRID := 1.0
+
+const BuildableScr := preload("res://scripts/buildable.gd")
 
 var hp := MAX_HP
 var hp_max := MAX_HP
@@ -15,16 +19,29 @@ var _pitch := 0.0
 var _cam: Camera3D
 var _ray: RayCast3D
 var _vm: Node3D
+var _hand: Node3D
+var _tool_root: Node3D
 var _vm_base := Vector3(0.35, -0.4, -0.6)
 var _punch := 0.0
 var _bob := 0.0
+var _shown_tool := "__none__"
+
+var _ghost: MeshInstance3D
+var _ghost_mat_ok: StandardMaterial3D
+var _ghost_mat_bad: StandardMaterial3D
+var _can_build := false
+var _build_pos := Vector3.ZERO
+var _build_yaw := 0.0
 
 
 func _ready() -> void:
 	add_to_group("player")
 	_cam = $Camera3D
 	_ray = $Camera3D/RayCast3D
+	_ray.target_position = Vector3(0, 0, -BUILD_RANGE)
+	_ray.collision_mask = 1  # world + static
 	_build_viewmodel()
+	_build_ghost()
 
 
 func _input(event: InputEvent) -> void:
@@ -40,6 +57,8 @@ func _input(event: InputEvent) -> void:
 
 func _physics_process(delta: float) -> void:
 	if Controls.ui_open:
+		if _ghost:
+			_ghost.visible = false
 		return
 	if hp <= 0:
 		_respawn()
@@ -78,9 +97,15 @@ func _physics_process(delta: float) -> void:
 
 	move_and_slide()
 
+	_update_tool_model()
+	_update_build_ghost()
+
 	if Controls.attack_queued:
 		Controls.attack_queued = false
-		_use()
+		if Controls.build_mode:
+			_try_build()
+		else:
+			_use()
 
 	_animate(delta)
 
@@ -130,6 +155,8 @@ func _use() -> void:
 			dmg = 3 if eq == "stone_sword" else 2
 		elif eq == "axe" or eq == "stone_axe":
 			dmg = 2
+		elif eq == "pickaxe" or eq == "stone_pickaxe":
+			dmg = 2
 		col.hit(dmg)
 		if eq != "" and Inv.is_tool(eq):
 			Inv.use_tool(eq)
@@ -137,8 +164,270 @@ func _use() -> void:
 				Controls.equipped = ""
 
 
+func _try_build() -> void:
+	if not _can_build:
+		return
+	var pid := Controls.build_piece
+	if pid == "" or Inv.count(pid) <= 0:
+		return
+	Inv.remove(pid, 1)
+	var node := _make_build_piece(pid)
+	node.position = _build_pos
+	node.rotation.y = _build_yaw
+	get_tree().current_scene.add_child(node)
+	_punch = 0.18
+	if Inv.count(pid) <= 0:
+		# keep mode, but ghost will go bad until craft more
+		pass
+
+
+func _make_build_piece(pid: String) -> StaticBody3D:
+	var n := StaticBody3D.new()
+	n.set_script(BuildableScr)
+	n.piece_id = pid
+	n.collision_layer = 1
+	n.collision_mask = 1
+	var mat := _piece_mat(pid)
+	var mesh_i := MeshInstance3D.new()
+	var col := CollisionShape3D.new()
+	match pid:
+		"wood_wall", "stone_wall":
+			var bm := BoxMesh.new()
+			bm.size = Vector3(1.0, 2.0, 0.2)
+			bm.material = mat
+			mesh_i.mesh = bm
+			mesh_i.position = Vector3(0, 1.0, 0)
+			var bs := BoxShape3D.new()
+			bs.size = Vector3(1.0, 2.0, 0.2)
+			col.shape = bs
+			col.position = Vector3(0, 1.0, 0)
+			n.hp = 6
+		"wood_floor":
+			var bm2 := BoxMesh.new()
+			bm2.size = Vector3(1.0, 0.15, 1.0)
+			bm2.material = mat
+			mesh_i.mesh = bm2
+			mesh_i.position = Vector3(0, 0.075, 0)
+			var bs2 := BoxShape3D.new()
+			bs2.size = Vector3(1.0, 0.15, 1.0)
+			col.shape = bs2
+			col.position = Vector3(0, 0.075, 0)
+			n.hp = 4
+		"wood_pillar":
+			var cm := CylinderMesh.new()
+			cm.top_radius = 0.15
+			cm.bottom_radius = 0.18
+			cm.height = 2.0
+			cm.material = mat
+			mesh_i.mesh = cm
+			mesh_i.position = Vector3(0, 1.0, 0)
+			var cs := CylinderShape3D.new()
+			cs.radius = 0.18
+			cs.height = 2.0
+			col.shape = cs
+			col.position = Vector3(0, 1.0, 0)
+			n.hp = 5
+		"campfire":
+			var wood := _flat(Color(0.35, 0.22, 0.12))
+			var logm := CylinderMesh.new()
+			logm.top_radius = 0.08
+			logm.bottom_radius = 0.08
+			logm.height = 0.7
+			logm.material = wood
+			var l1 := MeshInstance3D.new()
+			l1.mesh = logm
+			l1.position = Vector3(0, 0.1, 0)
+			l1.rotation = Vector3(0, 0, PI * 0.5)
+			n.add_child(l1)
+			var l2 := MeshInstance3D.new()
+			l2.mesh = logm
+			l2.position = Vector3(0, 0.1, 0)
+			l2.rotation = Vector3(0, PI * 0.5, PI * 0.5)
+			n.add_child(l2)
+			var fire_m := SphereMesh.new()
+			fire_m.radius = 0.22
+			fire_m.height = 0.4
+			var fm := StandardMaterial3D.new()
+			fm.albedo_color = Color(1.0, 0.45, 0.08)
+			fm.emission_enabled = true
+			fm.emission = Color(1.0, 0.35, 0.05)
+			fm.emission_energy_multiplier = 2.5
+			fire_m.material = fm
+			mesh_i.mesh = fire_m
+			mesh_i.position = Vector3(0, 0.35, 0)
+			var light := OmniLight3D.new()
+			light.light_color = Color(1.0, 0.6, 0.25)
+			light.light_energy = 1.6
+			light.omni_range = 8.0
+			light.position = Vector3(0, 0.5, 0)
+			n.add_child(light)
+			var bs3 := BoxShape3D.new()
+			bs3.size = Vector3(0.8, 0.6, 0.8)
+			col.shape = bs3
+			col.position = Vector3(0, 0.3, 0)
+			n.hp = 3
+		_:
+			# wood_block / stone_block
+			var bm3 := BoxMesh.new()
+			bm3.size = Vector3(1, 1, 1)
+			bm3.material = mat
+			mesh_i.mesh = bm3
+			mesh_i.position = Vector3(0, 0.5, 0)
+			var bs4 := BoxShape3D.new()
+			bs4.size = Vector3(1, 1, 1)
+			col.shape = bs4
+			col.position = Vector3(0, 0.5, 0)
+			n.hp = 5 if pid.begins_with("stone") else 4
+	n.add_child(mesh_i)
+	n.add_child(col)
+	return n
+
+
+func _piece_mat(pid: String) -> StandardMaterial3D:
+	var m := StandardMaterial3D.new()
+	m.roughness = 0.9
+	if pid.begins_with("stone"):
+		m.albedo_color = Color(0.48, 0.48, 0.50)
+	elif pid == "campfire":
+		m.albedo_color = Color(0.35, 0.22, 0.12)
+	else:
+		m.albedo_color = Color(0.45, 0.30, 0.16)
+	return m
+
+
+func _build_ghost() -> void:
+	_ghost_mat_ok = StandardMaterial3D.new()
+	_ghost_mat_ok.albedo_color = Color(0.3, 0.9, 0.4, 0.35)
+	_ghost_mat_ok.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	_ghost_mat_ok.cull_mode = BaseMaterial3D.CULL_DISABLED
+	_ghost_mat_ok.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	_ghost_mat_bad = StandardMaterial3D.new()
+	_ghost_mat_bad.albedo_color = Color(0.95, 0.25, 0.2, 0.35)
+	_ghost_mat_bad.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	_ghost_mat_bad.cull_mode = BaseMaterial3D.CULL_DISABLED
+	_ghost_mat_bad.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	_ghost = MeshInstance3D.new()
+	_ghost.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	_ghost.visible = false
+	_ghost.top_level = true
+	add_child(_ghost)
+
+
+func _update_build_ghost() -> void:
+	if _ghost == null:
+		return
+	if not Controls.build_mode or Controls.ui_open:
+		_ghost.visible = false
+		_can_build = false
+		return
+	var pid := Controls.build_piece
+	if pid == "" or Inv.count(pid) <= 0:
+		_ghost.visible = false
+		_can_build = false
+		return
+
+	_ray.force_raycast_update()
+	if not _ray.is_colliding():
+		_ghost.visible = false
+		_can_build = false
+		return
+
+	var hit_pos: Vector3 = _ray.get_collision_point()
+	var hit_n: Vector3 = _ray.get_collision_normal()
+	var raw := hit_pos + hit_n * 0.51
+	# grid snap
+	var gx := snappedf(raw.x - 0.5, GRID) + 0.5
+	var gz := snappedf(raw.z - 0.5, GRID) + 0.5
+	var gy: float
+	if pid == "wood_floor":
+		gy = snappedf(raw.y, 0.15)
+	elif hit_n.y > 0.6:
+		gy = snappedf(hit_pos.y, 0.05)
+	else:
+		gy = snappedf(raw.y - 0.5, GRID)
+		if pid in ["wood_wall", "stone_wall", "wood_pillar", "campfire"]:
+			pass
+		else:
+			gy = snappedf(raw.y - 0.5, GRID)
+
+	# blocks sit on ground with y = floor
+	if pid in ["wood_block", "stone_block"]:
+		if hit_n.y > 0.5:
+			gy = hit_pos.y
+		else:
+			gy = snappedf(raw.y - 0.5, GRID)
+		_build_pos = Vector3(gx, gy, gz)
+	elif pid in ["wood_wall", "stone_wall", "wood_pillar"]:
+		if hit_n.y > 0.5:
+			gy = hit_pos.y
+		else:
+			gy = snappedf(hit_pos.y, GRID)
+		_build_pos = Vector3(gx, gy, gz)
+	elif pid == "wood_floor":
+		gy = hit_pos.y if hit_n.y > 0.5 else raw.y
+		_build_pos = Vector3(gx, gy, gz)
+	else:
+		_build_pos = Vector3(gx, hit_pos.y if hit_n.y > 0.5 else gy, gz)
+
+	_build_yaw = float(Controls.build_rotate % 4) * PI * 0.5
+
+	# ghost mesh
+	_ghost.mesh = _ghost_mesh_for(pid)
+	_ghost.material_override = _ghost_mat_ok
+	# ghost is child of player — set global
+	_ghost.global_position = _build_pos + _ghost_offset(pid)
+	_ghost.global_rotation = Vector3(0, _build_yaw, 0)
+	_ghost.visible = true
+
+	# validity: not too close to player, has piece
+	var ppos := global_position
+	var dist := Vector2(_build_pos.x - ppos.x, _build_pos.z - ppos.z).length()
+	_can_build = dist > 1.1 and Inv.count(pid) > 0
+	_ghost.material_override = _ghost_mat_ok if _can_build else _ghost_mat_bad
+
+
+func _ghost_offset(pid: String) -> Vector3:
+	match pid:
+		"wood_wall", "stone_wall":
+			return Vector3(0, 1.0, 0)
+		"wood_floor":
+			return Vector3(0, 0.075, 0)
+		"wood_pillar":
+			return Vector3(0, 1.0, 0)
+		"campfire":
+			return Vector3(0, 0.3, 0)
+		_:
+			return Vector3(0, 0.5, 0)
+
+
+func _ghost_mesh_for(pid: String) -> Mesh:
+	match pid:
+		"wood_wall", "stone_wall":
+			var b := BoxMesh.new()
+			b.size = Vector3(1.0, 2.0, 0.2)
+			return b
+		"wood_floor":
+			var b2 := BoxMesh.new()
+			b2.size = Vector3(1.0, 0.15, 1.0)
+			return b2
+		"wood_pillar":
+			var c := CylinderMesh.new()
+			c.top_radius = 0.15
+			c.bottom_radius = 0.18
+			c.height = 2.0
+			return c
+		"campfire":
+			var s := SphereMesh.new()
+			s.radius = 0.3
+			s.height = 0.5
+			return s
+		_:
+			var b3 := BoxMesh.new()
+			b3.size = Vector3(1, 1, 1)
+			return b3
+
+
 func _animate(delta: float) -> void:
-	# покачивание при ходьбе (head-bob + рука)
 	var hspeed := Vector2(velocity.x, velocity.z).length()
 	var move_amt: float = clampf(hspeed / SPEED, 0.0, 1.0)
 	if hspeed > 0.3:
@@ -147,7 +436,6 @@ func _animate(delta: float) -> void:
 	var bob_x: float = sin(_bob * 0.5) * 0.02 * move_amt
 	_cam.position = Vector3(bob_x, 1.6 + bob_y, 0.0)
 
-	# анимация удара кулаком
 	if _punch > 0.0:
 		_punch -= delta
 		var prog: float = 1.0 - clampf(_punch / 0.28, 0.0, 1.0)
@@ -163,33 +451,199 @@ func _build_viewmodel() -> void:
 	_vm = Node3D.new()
 	_vm.position = _vm_base
 	_cam.add_child(_vm)
-	var mat := StandardMaterial3D.new()
-	mat.albedo_color = Color(0.92, 0.72, 0.55)
+
+	var skin := _flat(Color(0.92, 0.72, 0.55))
+	# рука
+	_hand = Node3D.new()
+	_vm.add_child(_hand)
 	var upper := MeshInstance3D.new()
 	var cm1 := CylinderMesh.new()
 	cm1.top_radius = 0.08
 	cm1.bottom_radius = 0.07
 	cm1.height = 0.28
-	cm1.material = mat
+	cm1.material = skin
 	upper.mesh = cm1
 	upper.position = Vector3(0, -0.1, 0.1)
 	upper.rotation.x = -0.9
-	_vm.add_child(upper)
+	_hand.add_child(upper)
 	var fore := MeshInstance3D.new()
 	var cm2 := CylinderMesh.new()
 	cm2.top_radius = 0.07
 	cm2.bottom_radius = 0.06
 	cm2.height = 0.26
-	cm2.material = mat
+	cm2.material = skin
 	fore.mesh = cm2
 	fore.position = Vector3(0, -0.32, 0.28)
 	fore.rotation.x = -1.3
-	_vm.add_child(fore)
+	_hand.add_child(fore)
 	var fist := MeshInstance3D.new()
 	var bm := SphereMesh.new()
 	bm.radius = 0.1
 	bm.height = 0.2
-	bm.material = mat
+	bm.material = skin
 	fist.mesh = bm
 	fist.position = Vector3(0, -0.46, 0.42)
-	_vm.add_child(fist)
+	_hand.add_child(fist)
+
+	_tool_root = Node3D.new()
+	_tool_root.position = Vector3(0.02, -0.42, 0.50)
+	_vm.add_child(_tool_root)
+
+
+func _update_tool_model() -> void:
+	var eq := Controls.equipped
+	if eq != "" and Inv.count(eq) <= 0:
+		eq = ""
+		Controls.equipped = ""
+	var key := eq if eq != "" else ""
+	if key == _shown_tool:
+		return
+	_shown_tool = key
+	while _tool_root.get_child_count() > 0:
+		var c := _tool_root.get_child(0)
+		_tool_root.remove_child(c)
+		c.free()
+	if key == "":
+		_hand.visible = true
+		return
+	_hand.visible = true
+	_spawn_tool_mesh(key)
+
+
+func _spawn_tool_mesh(id: String) -> void:
+	var wood := _flat(Color(0.42, 0.26, 0.14))
+	var stone := _flat(Color(0.55, 0.55, 0.58))
+	var dark := _flat(Color(0.18, 0.18, 0.2))
+	var metal := stone if id.begins_with("stone_") else _flat(Color(0.62, 0.62, 0.65))
+	if id.begins_with("stone_"):
+		wood = _flat(Color(0.35, 0.22, 0.12))
+		metal = _flat(Color(0.45, 0.45, 0.48))
+
+	var base := id.replace("stone_", "")
+	match base:
+		"axe":
+			_add_handle(wood, 0.55, 0.03)
+			var head := MeshInstance3D.new()
+			var bx := BoxMesh.new()
+			bx.size = Vector3(0.22, 0.12, 0.08)
+			bx.material = metal
+			head.mesh = bx
+			head.position = Vector3(0.08, 0.28, 0)
+			_tool_root.add_child(head)
+			var blade := MeshInstance3D.new()
+			var pr := PrismMesh.new()
+			pr.size = Vector3(0.16, 0.14, 0.04)
+			pr.material = metal
+			blade.mesh = pr
+			blade.position = Vector3(0.18, 0.28, 0)
+			blade.rotation = Vector3(0, 0, -PI * 0.5)
+			_tool_root.add_child(blade)
+		"pickaxe":
+			_add_handle(wood, 0.55, 0.028)
+			var bar := MeshInstance3D.new()
+			var bb := BoxMesh.new()
+			bb.size = Vector3(0.36, 0.06, 0.06)
+			bb.material = metal
+			bar.mesh = bb
+			bar.position = Vector3(0, 0.28, 0)
+			_tool_root.add_child(bar)
+			for s in [-1.0, 1.0]:
+				var tip := MeshInstance3D.new()
+				var pr2 := PrismMesh.new()
+				pr2.size = Vector3(0.08, 0.12, 0.05)
+				pr2.material = metal
+				tip.mesh = pr2
+				tip.position = Vector3(s * 0.20, 0.28, 0)
+				tip.rotation = Vector3(0, 0, s * 0.9)
+				_tool_root.add_child(tip)
+		"sword":
+			_add_handle(wood, 0.22, 0.035)
+			var guard := MeshInstance3D.new()
+			var g := BoxMesh.new()
+			g.size = Vector3(0.18, 0.04, 0.06)
+			g.material = metal
+			guard.mesh = g
+			guard.position = Vector3(0, 0.12, 0)
+			_tool_root.add_child(guard)
+			var blade2 := MeshInstance3D.new()
+			var bl := BoxMesh.new()
+			bl.size = Vector3(0.06, 0.45, 0.02)
+			bl.material = metal
+			blade2.mesh = bl
+			blade2.position = Vector3(0, 0.36, 0)
+			_tool_root.add_child(blade2)
+			var tip2 := MeshInstance3D.new()
+			var pr3 := PrismMesh.new()
+			pr3.size = Vector3(0.06, 0.08, 0.02)
+			pr3.material = metal
+			tip2.mesh = pr3
+			tip2.position = Vector3(0, 0.62, 0)
+			_tool_root.add_child(tip2)
+		"bow", "crossbow":
+			# лук — дуга + тетива
+			var limb := MeshInstance3D.new()
+			var lc := CylinderMesh.new()
+			lc.top_radius = 0.02
+			lc.bottom_radius = 0.025
+			lc.height = 0.55
+			lc.material = wood
+			limb.mesh = lc
+			limb.position = Vector3(0.05, 0.15, 0)
+			limb.rotation.z = 0.35
+			_tool_root.add_child(limb)
+			var limb2 := MeshInstance3D.new()
+			limb2.mesh = lc.duplicate()
+			limb2.position = Vector3(-0.05, 0.15, 0)
+			limb2.rotation.z = -0.35
+			_tool_root.add_child(limb2)
+			if base == "crossbow":
+				var stock := MeshInstance3D.new()
+				var sb := BoxMesh.new()
+				sb.size = Vector3(0.08, 0.12, 0.35)
+				sb.material = wood
+				stock.mesh = sb
+				stock.position = Vector3(0, 0.05, 0.05)
+				_tool_root.add_child(stock)
+				var bowbar := MeshInstance3D.new()
+				var bb2 := BoxMesh.new()
+				bb2.size = Vector3(0.4, 0.04, 0.04)
+				bb2.material = wood
+				bowbar.mesh = bb2
+				bowbar.position = Vector3(0, 0.12, -0.1)
+				_tool_root.add_child(bowbar)
+		"rod":
+			_add_handle(wood, 0.7, 0.02)
+			var tip := MeshInstance3D.new()
+			var tc := CylinderMesh.new()
+			tc.top_radius = 0.008
+			tc.bottom_radius = 0.018
+			tc.height = 0.25
+			tc.material = dark
+			tip.mesh = tc
+			tip.position = Vector3(0, 0.45, 0)
+			_tool_root.add_child(tip)
+		_:
+			_add_handle(wood, 0.4, 0.03)
+
+	# лёгкий наклон «в руках»
+	_tool_root.rotation = Vector3(0.9, 0.4, -0.2)
+
+
+func _add_handle(mat: Material, h: float, r: float) -> void:
+	var handle := MeshInstance3D.new()
+	var c := CylinderMesh.new()
+	c.top_radius = r * 0.85
+	c.bottom_radius = r
+	c.height = h
+	c.radial_segments = 8
+	c.material = mat
+	handle.mesh = c
+	handle.position = Vector3(0, h * 0.35, 0)
+	_tool_root.add_child(handle)
+
+
+func _flat(color: Color) -> StandardMaterial3D:
+	var m := StandardMaterial3D.new()
+	m.albedo_color = color
+	m.roughness = 0.85
+	return m

@@ -24,6 +24,9 @@ var _hp_label: Label
 var _player
 var _inv_ui
 var _eq_label: Label
+var _build_btn: Button
+var _build_info: Label
+var _cross: Control
 
 var _elev := FastNoiseLite.new()
 var _moist := FastNoiseLite.new()
@@ -62,6 +65,17 @@ func _process(_delta: float) -> void:
 			_eq_label.text = "В руках: %s (%d/%d)" % [_tname(eq), Inv.durability_of(eq), Inv.max_dur(eq)]
 		else:
 			_eq_label.text = "В руках: кулак"
+	if _build_btn:
+		_build_btn.text = "СТРОЙ:ВКЛ" if Controls.build_mode else "СТРОЙ"
+	if _build_info:
+		if Controls.build_mode:
+			var pid := Controls.build_piece
+			_build_info.text = "Стройка: %s ×%d | повёрнут %d°" % [_bname(pid), Inv.count(pid), (Controls.build_rotate % 4) * 90]
+			_build_info.visible = true
+		else:
+			_build_info.visible = false
+	if _cross:
+		_cross.visible = not Controls.ui_open
 
 
 # --- Биомы ---
@@ -615,6 +629,62 @@ func _build_hud() -> void:
 	_eq_label.add_theme_font_size_override("font_size", 20)
 	root.add_child(_eq_label)
 
+	# Прицел по центру (4 полоски + точка)
+	_cross = Control.new()
+	_cross.set_anchors_preset(Control.PRESET_FULL_RECT)
+	_cross.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	root.add_child(_cross)
+	_make_crosshair(_cross)
+
+	# Строительство
+	_build_btn = Button.new()
+	_build_btn.text = "СТРОЙ"
+	_build_btn.anchor_left = 1.0
+	_build_btn.anchor_right = 1.0
+	_build_btn.anchor_top = 0.0
+	_build_btn.anchor_bottom = 0.0
+	_build_btn.offset_left = -630
+	_build_btn.offset_right = -482
+	_build_btn.offset_top = 16
+	_build_btn.offset_bottom = 72
+	_build_btn.add_theme_font_size_override("font_size", 20)
+	_build_btn.pressed.connect(_toggle_build)
+	root.add_child(_build_btn)
+
+	var rot_btn := Button.new()
+	rot_btn.text = "ПОВОР"
+	rot_btn.anchor_left = 1.0
+	rot_btn.anchor_right = 1.0
+	rot_btn.anchor_top = 0.0
+	rot_btn.anchor_bottom = 0.0
+	rot_btn.offset_left = -790
+	rot_btn.offset_right = -642
+	rot_btn.offset_top = 16
+	rot_btn.offset_bottom = 72
+	rot_btn.add_theme_font_size_override("font_size", 20)
+	rot_btn.pressed.connect(func() -> void:
+		Controls.build_rotate = (Controls.build_rotate + 1) % 4
+	)
+	root.add_child(rot_btn)
+
+	# кнопка поставить — в build mode основная ДОБЫТЬ ставит; доп. подсказка
+	_build_info = Label.new()
+	_build_info.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_build_info.anchor_left = 0.5
+	_build_info.anchor_right = 0.5
+	_build_info.anchor_top = 0.0
+	_build_info.anchor_bottom = 0.0
+	_build_info.offset_left = -280
+	_build_info.offset_right = 280
+	_build_info.offset_top = 90
+	_build_info.offset_bottom = 130
+	_build_info.add_theme_font_size_override("font_size", 20)
+	_build_info.visible = false
+	root.add_child(_build_info)
+
+	# Переименовать основную кнопку динамически? оставим, в build mode она ставит
+	g_btn.text = "ДЕЙСТВИЕ"
+
 	_inv_ui = InventoryUIScr.new()
 	add_child(_inv_ui)
 
@@ -626,6 +696,7 @@ func _exit_to_menu() -> void:
 	Controls.jump_queued = false
 	Controls.attack_queued = false
 	Controls.ui_open = false
+	Controls.build_mode = false
 	get_tree().paused = false
 	get_tree().change_scene_to_file("res://scenes/MainMenu.tscn")
 
@@ -686,5 +757,66 @@ func _tname(id: String) -> String:
 			return "Кам. арбалет"
 		"stone_rod":
 			return "Кам. удочка"
+		_:
+			return id
+
+
+func _make_crosshair(parent: Control) -> void:
+	var col := Color(1, 1, 1, 0.9)
+	var gap := 7
+	var arm := 16
+	var th := 3
+	# left
+	parent.add_child(_cross_bar(col, -gap - arm, -th / 2, arm, th))
+	# right
+	parent.add_child(_cross_bar(col, gap, -th / 2, arm, th))
+	# up
+	parent.add_child(_cross_bar(col, -th / 2, -gap - arm, th, arm))
+	# down
+	parent.add_child(_cross_bar(col, -th / 2, gap, th, arm))
+	# dot
+	parent.add_child(_cross_bar(col, -2, -2, 4, 4))
+
+
+func _cross_bar(col: Color, ox: int, oy: int, w: int, h: int) -> ColorRect:
+	var r := ColorRect.new()
+	r.color = col
+	r.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	r.anchor_left = 0.5
+	r.anchor_right = 0.5
+	r.anchor_top = 0.5
+	r.anchor_bottom = 0.5
+	r.offset_left = float(ox)
+	r.offset_top = float(oy)
+	r.offset_right = float(ox + w)
+	r.offset_bottom = float(oy + h)
+	return r
+
+
+func _toggle_build() -> void:
+	Controls.build_mode = not Controls.build_mode
+	if Controls.build_mode and Controls.build_piece == "":
+		Controls.build_piece = "wood_block"
+	# if no pieces, still allow mode (ghost red)
+	if _build_btn:
+		_build_btn.text = "СТРОЙ:ВКЛ" if Controls.build_mode else "СТРОЙ"
+
+
+func _bname(id: String) -> String:
+	match id:
+		"wood_block":
+			return "Дер. блок"
+		"wood_wall":
+			return "Дер. стена"
+		"wood_floor":
+			return "Дер. пол"
+		"wood_pillar":
+			return "Дер. столб"
+		"stone_block":
+			return "Кам. блок"
+		"stone_wall":
+			return "Кам. стена"
+		"campfire":
+			return "Костёр"
 		_:
 			return id
