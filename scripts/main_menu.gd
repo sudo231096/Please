@@ -17,13 +17,13 @@ func _ready() -> void:
 	cc.add_child(vbox)
 
 	var title := Label.new()
-	title.text = "PIXEL SURVIVAL 3D"
+	title.text = "ASHVEIL"
 	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	title.add_theme_font_size_override("font_size", 48)
 	vbox.add_child(title)
 
 	var sub := Label.new()
-	sub.text = "выживание от первого лица"
+	sub.text = "остров выживания · крафт · стройка"
 	sub.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	sub.add_theme_font_size_override("font_size", 18)
 	vbox.add_child(sub)

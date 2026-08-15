@@ -28,6 +28,8 @@ var _root: Node3D
 
 func _ready() -> void:
 	add_to_group("animals")
+	collision_layer = 1
+	collision_mask = 1
 	var s: Dictionary = STATS[kind]
 	hp = int(s["hp"])
 	_player = get_tree().get_first_node_in_group("player")

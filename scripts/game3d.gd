@@ -81,16 +81,16 @@ func _process(_delta: float) -> void:
 # --- Биомы ---
 
 func _init_biome_noise() -> void:
+	# частоты ниже — огромные биомы на карте 6400
 	_elev.seed = 101
-	_elev.frequency = 0.012
-	_elev.fractal_octaves = 4
+	_elev.frequency = 0.00045
+	_elev.fractal_octaves = 5
 	_elev.fractal_gain = 0.5
 	_moist.seed = 202
-	_moist.frequency = 0.009
+	_moist.frequency = 0.00035
 	_moist.fractal_octaves = 3
-	# temp: крупные «континентальные» полосы cold/temp/hot
 	_temp.seed = 303
-	_temp.frequency = 0.0035
+	_temp.frequency = 0.00018
 	_temp.fractal_octaves = 2
 
 
@@ -143,8 +143,8 @@ func _biome_texture(size := 320) -> ImageTexture:
 	dn.frequency = 0.6
 	for pz in range(size):
 		for px in range(size):
-			var wx := (float(px) / float(size)) * 200.0 - 100.0
-			var wz := (float(pz) / float(size)) * 200.0 - 100.0
+			var wx := (float(px) / float(size)) * 6400.0 - 3200.0
+			var wz := (float(pz) / float(size)) * 6400.0 - 3200.0
 			var b: int = biome_at(wx, wz)
 			var c: Color = BCOLOR[b]
 			var nv: float = dn.get_noise_2d(wx * 2.0, wz * 2.0) * 0.035
@@ -335,6 +335,10 @@ func _build_env() -> void:
 	env.adjustment_enabled = true
 	env.adjustment_contrast = 1.08
 	env.adjustment_saturation = 1.12
+	env.fog_enabled = true
+	env.fog_light_color = Color(0.7, 0.78, 0.85)
+	env.fog_density = 0.00035
+	env.fog_aerial_perspective = 0.4
 	var we := WorldEnvironment.new()
 	we.environment = env
 	add_child(we)
@@ -350,7 +354,8 @@ func _build_ground() -> void:
 	var body := StaticBody3D.new()
 	body.name = "Terrain"
 	var mesh_i := MeshInstance3D.new()
-	var am: ArrayMesh = _build_height_mesh(72, 200.0)
+	# ~1000x площадь (200→6400), res пониже ради FPS
+	var am: ArrayMesh = _build_height_mesh(120, 6400.0)
 	mesh_i.mesh = am
 	var gm := StandardMaterial3D.new()
 	gm.albedo_texture = _biome_texture(384)
@@ -405,7 +410,7 @@ func _build_height_mesh(res: int, size: float) -> ArrayMesh:
 func _spawn_water_plane() -> void:
 	var mi := MeshInstance3D.new()
 	var plane := PlaneMesh.new()
-	plane.size = Vector2(200, 200)
+	plane.size = Vector2(6400.0, 6400.0)
 	var wm := StandardMaterial3D.new()
 	wm.albedo_color = Color(0.12, 0.35, 0.55, 0.72)
 	wm.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
@@ -425,7 +430,7 @@ func _spawn_biome_props() -> void:
 	snow_mat.albedo_color = Color(0.18, 0.28, 0.18)
 	var snow_top := StandardMaterial3D.new()
 	snow_top.albedo_color = Color(0.92, 0.94, 0.97)
-	for _i in range(40):
+	for _i in range(120):
 		var p := _pos_in_biomes([Biome.SAND])
 		var h := height_at(p.x, p.z)
 		var n := Node3D.new()
@@ -450,7 +455,7 @@ func _spawn_biome_props() -> void:
 		arm.rotation.z = -1.1
 		n.add_child(arm)
 		add_child(n)
-	for _j in range(35):
+	for _j in range(140):
 		var p2 := _pos_in_biomes([Biome.SNOW])
 		var h2 := height_at(p2.x, p2.z)
 		var t := Node3D.new()
@@ -478,8 +483,8 @@ func _spawn_biome_props() -> void:
 
 
 func _rand_pos() -> Vector3:
-	var x := _rng.randf_range(-90, 90)
-	var z := _rng.randf_range(-90, 90)
+	var x := _rng.randf_range(-2944.0, 2944.0)
+	var z := _rng.randf_range(-2944.0, 2944.0)
 	return Vector3(x, height_at(x, z), z)
 
 
@@ -492,16 +497,17 @@ func _pos_in_biomes(allowed: Array) -> Vector3:
 
 
 func _build_resources() -> void:
-	for _i in range(55):
+	# больше объектов под огромную карту (не линейно 1000x — убьёт мобилку)
+	for _i in range(420):
 		_spawn_tree(_pos_in_biomes([Biome.FOREST, Biome.PLAINS]))
-	for _i in range(26):
+	for _i in range(180):
 		_spawn_rock(_pos_in_biomes([Biome.PLAINS, Biome.ROCK, Biome.SAND]), "stone")
-	for _i in range(16):
+	for _i in range(90):
 		_spawn_rock(_pos_in_biomes([Biome.ROCK, Biome.SAND, Biome.PLAINS]), "sulfur")
 
 
 func _spawn_animals() -> void:
-	var counts := {AnimalScn.Kind.CHICKEN: 7, AnimalScn.Kind.DEER: 5, AnimalScn.Kind.BOAR: 4, AnimalScn.Kind.BEAR: 2}
+	var counts := {AnimalScn.Kind.CHICKEN: 40, AnimalScn.Kind.DEER: 28, AnimalScn.Kind.BOAR: 18, AnimalScn.Kind.BEAR: 10}
 	var mats := {AnimalScn.Kind.CHICKEN: _mat_chicken, AnimalScn.Kind.DEER: _mat_deer, AnimalScn.Kind.BOAR: _mat_boar, AnimalScn.Kind.BEAR: _mat_bear}
 	for k in counts:
 		for _i in range(counts[k]):
@@ -685,6 +691,9 @@ func _build_player() -> void:
 	p.spawn_pos = p.position
 	add_child(p)
 	_player = p
+	if p.has_node("Camera3D"):
+		p.get_node("Camera3D").far = 2000.0
+		p.get_node("Camera3D").near = 0.08
 
 
 func _build_hud() -> void:

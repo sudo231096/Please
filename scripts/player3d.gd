@@ -2,11 +2,12 @@ extends CharacterBody3D
 ## FPS-игрок: рука + модели инструментов, прицел-рейкаст, стройка блоков.
 
 const GRAV := 22.0
-const SPEED := 6.0
+const SPEED := 6.5
 const JUMP := 7.5
 const MAX_HP := 100
-const BUILD_RANGE := 6.0
-const GRID := 1.0
+const BUILD_RANGE := 10.0
+const RANGED_RANGE := 55.0
+const GRID := 2.0
 
 const BuildableScr := preload("res://scripts/buildable.gd")
 const ItemModelsScr := preload("res://scripts/item_models.gd")
@@ -44,9 +45,11 @@ func _ready() -> void:
 	add_to_group("player")
 	_models = ItemModelsScr.new()
 	_cam = $Camera3D
+	# не рисовать слой 2 (торс/голова/руки тела) — только ноги при взгляде вниз
+	_cam.cull_mask = 1
 	_ray = $Camera3D/RayCast3D
-	_ray.target_position = Vector3(0, 0, -BUILD_RANGE)
-	_ray.collision_mask = 1  # world + static
+	_ray.target_position = Vector3(0, 0, -RANGED_RANGE)
+	_ray.collision_mask = 1  # world + animals + builds
 	_build_viewmodel()
 	_build_body_model()
 	_build_ghost()
@@ -138,16 +141,22 @@ func _respawn() -> void:
 
 func _use() -> void:
 	_punch = 0.28
+	var eq := Controls.equipped
+	if eq != "" and Inv.count(eq) <= 0:
+		Controls.equipped = ""
+		eq = ""
+	var base := eq.replace("stone_", "")
+	# Дальний бой: лук / арбалет
+	if base == "bow" or base == "crossbow":
+		_ranged_shot(eq, base)
+		return
+	_ray.target_position = Vector3(0, 0, -BUILD_RANGE)
 	_ray.force_raycast_update()
 	if not _ray.is_colliding():
 		return
 	var col = _ray.get_collider()
 	if col == null:
 		return
-	var eq := Controls.equipped
-	if eq != "" and Inv.count(eq) <= 0:
-		Controls.equipped = ""
-		eq = ""
 	if col.has_method("gather"):
 		var rtype := ""
 		if "res_type" in col:
@@ -180,6 +189,63 @@ func _use() -> void:
 				Controls.equipped = ""
 
 
+func _ranged_shot(eq: String, base: String) -> void:
+	_ray.target_position = Vector3(0, 0, -RANGED_RANGE)
+	_ray.force_raycast_update()
+	var dmg := 2
+	if base == "crossbow":
+		dmg = 4 if eq.begins_with("stone_") else 3
+	else:
+		dmg = 3 if eq.begins_with("stone_") else 2
+	# визуал снаряда
+	var start: Vector3 = _cam.global_position - _cam.global_transform.basis.z * 0.4
+	var end: Vector3 = start - _cam.global_transform.basis.z * RANGED_RANGE
+	var hit_ok := false
+	if _ray.is_colliding():
+		end = _ray.get_collision_point()
+		var col = _ray.get_collider()
+		if col and col.has_method("hit"):
+			# только по животным/постройкам, не по ресурсам gather без нужды
+			if col.is_in_group("animals") or col.has_method("hit"):
+				col.hit(dmg)
+				hit_ok = true
+	_spawn_tracer(start, end, base == "crossbow")
+	if eq != "" and Inv.is_tool(eq):
+		Inv.use_tool(eq)
+		if Inv.count(eq) <= 0:
+			Controls.equipped = ""
+
+
+func _spawn_tracer(from: Vector3, to: Vector3, bolt: bool) -> void:
+	var mi := MeshInstance3D.new()
+	var c := CylinderMesh.new()
+	var dist := from.distance_to(to)
+	c.top_radius = 0.02 if bolt else 0.012
+	c.bottom_radius = 0.02 if bolt else 0.012
+	c.height = maxf(dist, 0.1)
+	var mat := StandardMaterial3D.new()
+	mat.albedo_color = Color(0.85, 0.75, 0.45) if bolt else Color(0.75, 0.55, 0.25)
+	mat.emission_enabled = true
+	mat.emission = mat.albedo_color
+	mat.emission_energy_multiplier = 1.5
+	c.material = mat
+	mi.mesh = c
+	var mid := (from + to) * 0.5
+	mi.global_position = mid
+	# look along direction
+	var dir := (to - from).normalized()
+	if dir.length() > 0.01:
+		mi.look_at(to, Vector3.UP)
+		mi.rotate_object_local(Vector3.RIGHT, PI * 0.5)
+	get_tree().current_scene.add_child(mi)
+	# удалить через кадр
+	var tmr := get_tree().create_timer(0.12)
+	tmr.timeout.connect(func() -> void:
+		if is_instance_valid(mi):
+			mi.queue_free()
+	)
+
+
 func _try_build() -> void:
 	if not _can_build:
 		return
@@ -209,40 +275,40 @@ func _make_build_piece(pid: String) -> StaticBody3D:
 	match pid:
 		"wood_wall", "stone_wall":
 			var bm := BoxMesh.new()
-			bm.size = Vector3(1.0, 2.0, 0.2)
+			bm.size = Vector3(4.0, 3.5, 0.35)
 			bm.material = mat
 			mesh_i.mesh = bm
-			mesh_i.position = Vector3(0, 1.0, 0)
+			mesh_i.position = Vector3(0, 1.75, 0)
 			var bs := BoxShape3D.new()
-			bs.size = Vector3(1.0, 2.0, 0.2)
+			bs.size = Vector3(4.0, 3.5, 0.35)
 			col.shape = bs
-			col.position = Vector3(0, 1.0, 0)
-			n.hp = 6
+			col.position = Vector3(0, 1.75, 0)
+			n.hp = 12
 		"wood_floor":
 			var bm2 := BoxMesh.new()
-			bm2.size = Vector3(1.0, 0.15, 1.0)
+			bm2.size = Vector3(4.0, 0.25, 4.0)
 			bm2.material = mat
 			mesh_i.mesh = bm2
-			mesh_i.position = Vector3(0, 0.075, 0)
+			mesh_i.position = Vector3(0, 0.125, 0)
 			var bs2 := BoxShape3D.new()
-			bs2.size = Vector3(1.0, 0.15, 1.0)
+			bs2.size = Vector3(4.0, 0.25, 4.0)
 			col.shape = bs2
-			col.position = Vector3(0, 0.075, 0)
-			n.hp = 4
+			col.position = Vector3(0, 0.125, 0)
+			n.hp = 10
 		"wood_pillar":
 			var cm := CylinderMesh.new()
-			cm.top_radius = 0.15
-			cm.bottom_radius = 0.18
-			cm.height = 2.0
+			cm.top_radius = 0.28
+			cm.bottom_radius = 0.35
+			cm.height = 3.5
 			cm.material = mat
 			mesh_i.mesh = cm
-			mesh_i.position = Vector3(0, 1.0, 0)
+			mesh_i.position = Vector3(0, 1.75, 0)
 			var cs := CylinderShape3D.new()
-			cs.radius = 0.18
-			cs.height = 2.0
+			cs.radius = 0.35
+			cs.height = 3.5
 			col.shape = cs
-			col.position = Vector3(0, 1.0, 0)
-			n.hp = 5
+			col.position = Vector3(0, 1.75, 0)
+			n.hp = 10
 		"campfire":
 			var wood := _flat(Color(0.35, 0.22, 0.12))
 			var logm := CylinderMesh.new()
@@ -285,14 +351,14 @@ func _make_build_piece(pid: String) -> StaticBody3D:
 		_:
 			# wood_block / stone_block
 			var bm3 := BoxMesh.new()
-			bm3.size = Vector3(1, 1, 1)
+			bm3.size = Vector3(2, 2, 2)
 			bm3.material = mat
 			mesh_i.mesh = bm3
-			mesh_i.position = Vector3(0, 0.5, 0)
+			mesh_i.position = Vector3(0, 1.0, 0)
 			var bs4 := BoxShape3D.new()
-			bs4.size = Vector3(1, 1, 1)
+			bs4.size = Vector3(2, 2, 2)
 			col.shape = bs4
-			col.position = Vector3(0, 0.5, 0)
+			col.position = Vector3(0, 1.0, 0)
 			n.hp = 5 if pid.begins_with("stone") else 4
 	n.add_child(mesh_i)
 	n.add_child(col)
@@ -405,32 +471,32 @@ func _update_build_ghost() -> void:
 func _ghost_offset(pid: String) -> Vector3:
 	match pid:
 		"wood_wall", "stone_wall":
-			return Vector3(0, 1.0, 0)
+			return Vector3(0, 1.75, 0)
 		"wood_floor":
-			return Vector3(0, 0.075, 0)
+			return Vector3(0, 0.125, 0)
 		"wood_pillar":
-			return Vector3(0, 1.0, 0)
+			return Vector3(0, 1.75, 0)
 		"campfire":
 			return Vector3(0, 0.3, 0)
 		_:
-			return Vector3(0, 0.5, 0)
+			return Vector3(0, 1.0, 0)
 
 
 func _ghost_mesh_for(pid: String) -> Mesh:
 	match pid:
 		"wood_wall", "stone_wall":
 			var b := BoxMesh.new()
-			b.size = Vector3(1.0, 2.0, 0.2)
+			b.size = Vector3(4.0, 3.5, 0.35)
 			return b
 		"wood_floor":
 			var b2 := BoxMesh.new()
-			b2.size = Vector3(1.0, 0.15, 1.0)
+			b2.size = Vector3(4.0, 0.25, 4.0)
 			return b2
 		"wood_pillar":
 			var c := CylinderMesh.new()
-			c.top_radius = 0.15
-			c.bottom_radius = 0.18
-			c.height = 2.0
+			c.top_radius = 0.28
+			c.bottom_radius = 0.35
+			c.height = 3.5
 			return c
 		"campfire":
 			var s := SphereMesh.new()
@@ -439,7 +505,7 @@ func _ghost_mesh_for(pid: String) -> Mesh:
 			return s
 		_:
 			var b3 := BoxMesh.new()
-			b3.size = Vector3(1, 1, 1)
+			b3.size = Vector3(2, 2, 2)
 			return b3
 
 
@@ -465,7 +531,7 @@ func _animate(delta: float) -> void:
 
 
 func _build_body_model() -> void:
-	# Простое тело Oxide-style (видно при взгляде вниз)
+	# Нормальная low-poly модель (торс НЕ в FPS: layers, камера cull)
 	if _armor_yaw == null:
 		_armor_yaw = Node3D.new()
 		_armor_yaw.name = "ArmorYaw"
@@ -473,56 +539,90 @@ func _build_body_model() -> void:
 	var body := Node3D.new()
 	body.name = "PlayerBody"
 	_armor_yaw.add_child(body)
-	var skin := _flat(Color(0.92, 0.72, 0.55))
-	var cloth := _flat(Color(0.25, 0.35, 0.28))
-	var pants := _flat(Color(0.22, 0.22, 0.28))
-	var boot := _flat(Color(0.18, 0.12, 0.08))
-	# торс
+	var skin := _flat(Color(0.90, 0.70, 0.55))
+	var cloth := _flat(Color(0.28, 0.34, 0.40))  # куртка
+	var pants := _flat(Color(0.20, 0.22, 0.26))
+	var boot := _flat(Color(0.14, 0.10, 0.08))
+	var hair := _flat(Color(0.18, 0.12, 0.08))
+	# --- торс (слой 2 — камера его не рисует) ---
 	var torso := MeshInstance3D.new()
 	var tb := BoxMesh.new()
-	tb.size = Vector3(0.55, 0.65, 0.32)
+	tb.size = Vector3(0.52, 0.58, 0.30)
 	torso.mesh = tb
 	torso.material_override = cloth
-	torso.position = Vector3(0, 1.15, 0)
+	torso.position = Vector3(0, 1.18, 0)
+	torso.layers = 2
 	body.add_child(torso)
-	# голова (под камерой, почти не видна)
+	# плечи
+	for sx in [-0.30, 0.30]:
+		var sh := MeshInstance3D.new()
+		var ss := SphereMesh.new()
+		ss.radius = 0.12
+		ss.height = 0.22
+		sh.mesh = ss
+		sh.material_override = cloth
+		sh.position = Vector3(sx, 1.40, 0)
+		sh.layers = 2
+		body.add_child(sh)
+	# голова
 	var head := MeshInstance3D.new()
 	var hs := SphereMesh.new()
-	hs.radius = 0.18
-	hs.height = 0.36
+	hs.radius = 0.17
+	hs.height = 0.34
 	head.mesh = hs
 	head.material_override = skin
-	head.position = Vector3(0, 1.62, 0)
+	head.position = Vector3(0, 1.62, 0.02)
+	head.layers = 2
 	body.add_child(head)
-	# ноги
-	for sx in [-0.14, 0.14]:
-		var leg := MeshInstance3D.new()
-		var lc := CylinderMesh.new()
-		lc.top_radius = 0.09
-		lc.bottom_radius = 0.10
-		lc.height = 0.7
-		leg.mesh = lc
-		leg.material_override = pants
-		leg.position = Vector3(sx, 0.45, 0)
-		body.add_child(leg)
+	var hair_m := MeshInstance3D.new()
+	var hh := SphereMesh.new()
+	hh.radius = 0.18
+	hh.height = 0.28
+	hair_m.mesh = hh
+	hair_m.material_override = hair
+	hair_m.position = Vector3(0, 1.72, -0.02)
+	hair_m.scale = Vector3(1.05, 0.7, 1.05)
+	hair_m.layers = 2
+	body.add_child(hair_m)
+	# ноги (слой 1 — видно при взгляде вниз)
+	for sx in [-0.13, 0.13]:
+		var thigh := MeshInstance3D.new()
+		var tc := CylinderMesh.new()
+		tc.top_radius = 0.095
+		tc.bottom_radius = 0.085
+		tc.height = 0.40
+		thigh.mesh = tc
+		thigh.material_override = pants
+		thigh.position = Vector3(sx, 0.70, 0)
+		body.add_child(thigh)
+		var shin := MeshInstance3D.new()
+		var sc := CylinderMesh.new()
+		sc.top_radius = 0.08
+		sc.bottom_radius = 0.07
+		sc.height = 0.38
+		shin.mesh = sc
+		shin.material_override = pants
+		shin.position = Vector3(sx, 0.32, 0)
+		body.add_child(shin)
 		var ft := MeshInstance3D.new()
 		var fb := BoxMesh.new()
-		fb.size = Vector3(0.14, 0.1, 0.26)
+		fb.size = Vector3(0.13, 0.09, 0.28)
 		ft.mesh = fb
 		ft.material_override = boot
-		ft.position = Vector3(sx, 0.06, 0.05)
+		ft.position = Vector3(sx, 0.06, 0.06)
 		body.add_child(ft)
-	# руки
-	for sx2 in [-0.38, 0.38]:
+	# руки (слой 2 — не торчат в FPS)
+	for sx2 in [-0.40, 0.40]:
 		var arm := MeshInstance3D.new()
 		var ac := CylinderMesh.new()
-		ac.top_radius = 0.07
-		ac.bottom_radius = 0.08
-		ac.height = 0.55
+		ac.top_radius = 0.065
+		ac.bottom_radius = 0.07
+		ac.height = 0.50
 		arm.mesh = ac
 		arm.material_override = cloth
 		arm.position = Vector3(sx2, 1.15, 0)
-		arm.rotation.z = 0.15 if sx2 < 0 else -0.15
+		arm.rotation.z = 0.2 if sx2 < 0 else -0.2
+		arm.layers = 2
 		body.add_child(arm)
 
 
@@ -645,18 +745,13 @@ func _update_armor_model() -> void:
 		_armor_root.add_child(holder)
 		_models.build_armor_piece(holder, pid, false)
 
-	# нагрудник — и на теле, и FPS-накладка
+	# нагрудник только на теле (не лезет в FPS-экран)
 	var chest_id := str(Inv.armor.get("chest", ""))
 	if chest_id != "":
 		var ch := Node3D.new()
 		ch.name = "chest"
 		_armor_root.add_child(ch)
 		_models.build_armor_piece(ch, chest_id, false)
-		if _fps_armor:
-			var chf := Node3D.new()
-			chf.name = "chest_fps"
-			_fps_armor.add_child(chf)
-			_models.build_armor_piece(chf, chest_id, true)
 
 	# шлем — FPS-накладка по краям экрана
 	var helm_id := str(Inv.armor.get("head", ""))
