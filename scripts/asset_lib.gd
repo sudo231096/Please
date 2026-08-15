@@ -187,15 +187,6 @@ func player_path() -> String:
 	return ROOT + "/player/Rogue_Hooded.glb"
 
 
-func animal_path(kind_name: String) -> String:
-	match kind_name:
-		"CHICKEN":
-			return ROOT + "/animals/chicken_proxy.glb"
-		"DEER":
-			return ROOT + "/animals/deer_proxy.glb"
-		"BOAR":
-			return ROOT + "/animals/deer_proxy.glb"
-		"BEAR":
-			return ROOT + "/animals/deer_proxy.glb"
-		_:
-			return ""
+func animal_path(_kind_name: String) -> String:
+	# не используем dummy Duck/Fox — модели строятся процедурно в animal3d.gd
+	return ""

@@ -10,8 +10,6 @@ Third-party CC0 / free game assets used in Ashveil:
 3) KayKit Prototype Bits 1.0 — https://github.com/KayKit-Game-Assets/KayKit-Prototype-Bits-1.0
    Used: walls, floors, pillars, cubes for building
 
-4) Khronos glTF Sample Models (Fox, Duck) — https://github.com/KhronosGroup/glTF-Sample-Models
-   License: various sample licenses (permissive)
-   Used as temporary animal stand-ins (scaled/tinted)
+Animals are procedural low-poly models (not third-party Duck/Fox samples).
 
 These are NOT assets from Oxide: Survival Island.
