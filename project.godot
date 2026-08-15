@@ -1,20 +1,14 @@
 ;
-; Pixel Survival 3D — Godot 4 project
+; Ashveil — clean slate
 ;
 config_version=5
 
 [application]
 
 config/name="Ashveil"
-run/main_scene="res://scenes/MainMenu.tscn"
+run/main_scene="res://scenes/Boot.tscn"
 config/features=PackedStringArray("4.7", "GL Compatibility")
 config/icon="res://icon.png"
-
-[autoload]
-
-Controls="*res://scripts/controls.gd"
-Inv="*res://scripts/inv.gd"
-AssetLib="*res://scripts/asset_lib.gd"
 
 [display]
 
