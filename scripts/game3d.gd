@@ -359,6 +359,28 @@ func _build_hud() -> void:
 	j_btn.button_down.connect(func() -> void: Controls.jump_queued = true)
 	root.add_child(j_btn)
 
+	# Кнопка выхода в главное меню (правый верхний угол)
+	var exit_btn := Button.new()
+	exit_btn.text = "ВЫХОД"
+	exit_btn.anchor_left = 1.0
+	exit_btn.anchor_right = 1.0
+	exit_btn.anchor_top = 0.0
+	exit_btn.anchor_bottom = 0.0
+	exit_btn.offset_left = -150
+	exit_btn.offset_right = -16
+	exit_btn.offset_top = 16
+	exit_btn.offset_bottom = 72
+	exit_btn.add_theme_font_size_override("font_size", 22)
+	exit_btn.pressed.connect(_exit_to_menu)
+	root.add_child(exit_btn)
+
+
+func _exit_to_menu() -> void:
+	Controls.move_vector = Vector2.ZERO
+	Controls.jump_queued = false
+	Controls.attack_queued = false
+	get_tree().change_scene_to_file("res://scenes/MainMenu.tscn")
+
 
 func _stack(btn: Button, idx: int) -> void:
 	var bw := 170
