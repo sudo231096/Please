@@ -531,7 +531,7 @@ func _animate(delta: float) -> void:
 
 
 func _build_body_model() -> void:
-	# Нормальная low-poly модель (торс НЕ в FPS: layers, камера cull)
+	# Oxide-like survivor body (hoodie + jeans + boots). Torso on layer 2 (hidden in FPS).
 	if _armor_yaw == null:
 		_armor_yaw = Node3D.new()
 		_armor_yaw.name = "ArmorYaw"
@@ -539,36 +539,48 @@ func _build_body_model() -> void:
 	var body := Node3D.new()
 	body.name = "PlayerBody"
 	_armor_yaw.add_child(body)
-	var skin := _flat(Color(0.90, 0.70, 0.55))
-	var cloth := _flat(Color(0.28, 0.34, 0.40))  # куртка
-	var pants := _flat(Color(0.20, 0.22, 0.26))
-	var boot := _flat(Color(0.14, 0.10, 0.08))
-	var hair := _flat(Color(0.18, 0.12, 0.08))
-	# --- торс (слой 2 — камера его не рисует) ---
+	var skin := _flat(Color(0.86, 0.68, 0.52))
+	var hoodie := _flat(Color(0.22, 0.28, 0.24))  # muted green-grey
+	var jeans := _flat(Color(0.18, 0.22, 0.32))
+	var boot := _flat(Color(0.12, 0.09, 0.07))
+	var hair := _flat(Color(0.14, 0.1, 0.07))
+	var strap := _flat(Color(0.25, 0.2, 0.14))
+	# torso hoodie
 	var torso := MeshInstance3D.new()
 	var tb := BoxMesh.new()
-	tb.size = Vector3(0.52, 0.58, 0.30)
+	tb.size = Vector3(0.5, 0.62, 0.3)
 	torso.mesh = tb
-	torso.material_override = cloth
-	torso.position = Vector3(0, 1.18, 0)
+	torso.material_override = hoodie
+	torso.position = Vector3(0, 1.2, 0)
 	torso.layers = 2
 	body.add_child(torso)
-	# плечи
-	for sx in [-0.30, 0.30]:
+	# hoodie hood bulge back
+	var hood := MeshInstance3D.new()
+	var hs0 := SphereMesh.new()
+	hs0.radius = 0.16
+	hs0.height = 0.28
+	hood.mesh = hs0
+	hood.material_override = hoodie
+	hood.position = Vector3(0, 1.48, -0.12)
+	hood.scale = Vector3(1.1, 0.7, 0.9)
+	hood.layers = 2
+	body.add_child(hood)
+	# shoulders
+	for sx in [-0.28, 0.28]:
 		var sh := MeshInstance3D.new()
 		var ss := SphereMesh.new()
-		ss.radius = 0.12
-		ss.height = 0.22
+		ss.radius = 0.11
+		ss.height = 0.2
 		sh.mesh = ss
-		sh.material_override = cloth
-		sh.position = Vector3(sx, 1.40, 0)
+		sh.material_override = hoodie
+		sh.position = Vector3(sx, 1.42, 0)
 		sh.layers = 2
 		body.add_child(sh)
-	# голова
+	# head
 	var head := MeshInstance3D.new()
 	var hs := SphereMesh.new()
-	hs.radius = 0.17
-	hs.height = 0.34
+	hs.radius = 0.16
+	hs.height = 0.32
 	head.mesh = hs
 	head.material_override = skin
 	head.position = Vector3(0, 1.62, 0.02)
@@ -576,52 +588,64 @@ func _build_body_model() -> void:
 	body.add_child(head)
 	var hair_m := MeshInstance3D.new()
 	var hh := SphereMesh.new()
-	hh.radius = 0.18
-	hh.height = 0.28
+	hh.radius = 0.17
+	hh.height = 0.26
 	hair_m.mesh = hh
 	hair_m.material_override = hair
-	hair_m.position = Vector3(0, 1.72, -0.02)
-	hair_m.scale = Vector3(1.05, 0.7, 1.05)
+	hair_m.position = Vector3(0, 1.72, -0.03)
+	hair_m.scale = Vector3(1.05, 0.65, 1.05)
 	hair_m.layers = 2
 	body.add_child(hair_m)
-	# ноги (слой 1 — видно при взгляде вниз)
-	for sx in [-0.13, 0.13]:
+	# backpack scrap
+	var pack := MeshInstance3D.new()
+	var pb := BoxMesh.new()
+	pb.size = Vector3(0.32, 0.4, 0.14)
+	pack.mesh = pb
+	pack.material_override = strap
+	pack.position = Vector3(0, 1.22, -0.22)
+	pack.layers = 2
+	body.add_child(pack)
+	# legs jeans
+	for sx in [-0.12, 0.12]:
 		var thigh := MeshInstance3D.new()
 		var tc := CylinderMesh.new()
 		tc.top_radius = 0.095
 		tc.bottom_radius = 0.085
-		tc.height = 0.40
+		tc.height = 0.42
+		tc.radial_segments = 8
 		thigh.mesh = tc
-		thigh.material_override = pants
-		thigh.position = Vector3(sx, 0.70, 0)
+		thigh.material_override = jeans
+		thigh.position = Vector3(sx, 0.72, 0)
 		body.add_child(thigh)
 		var shin := MeshInstance3D.new()
 		var sc := CylinderMesh.new()
 		sc.top_radius = 0.08
 		sc.bottom_radius = 0.07
-		sc.height = 0.38
+		sc.height = 0.4
+		sc.radial_segments = 8
 		shin.mesh = sc
-		shin.material_override = pants
+		shin.material_override = jeans
 		shin.position = Vector3(sx, 0.32, 0)
 		body.add_child(shin)
 		var ft := MeshInstance3D.new()
 		var fb := BoxMesh.new()
-		fb.size = Vector3(0.13, 0.09, 0.28)
+		fb.size = Vector3(0.13, 0.1, 0.3)
 		ft.mesh = fb
 		ft.material_override = boot
-		ft.position = Vector3(sx, 0.06, 0.06)
+		ft.position = Vector3(sx, 0.06, 0.07)
 		body.add_child(ft)
-	# руки (слой 2 — не торчат в FPS)
-	for sx2 in [-0.40, 0.40]:
+	# arms
+	for sx2 in [-0.38, 0.38]:
 		var arm := MeshInstance3D.new()
 		var ac := CylinderMesh.new()
-		ac.top_radius = 0.065
-		ac.bottom_radius = 0.07
-		ac.height = 0.50
+		ac.top_radius = 0.06
+		ac.bottom_radius = 0.065
+		ac.height = 0.52
+		ac.radial_segments = 8
 		arm.mesh = ac
-		arm.material_override = cloth
-		arm.position = Vector3(sx2, 1.15, 0)
-		arm.rotation.z = 0.2 if sx2 < 0 else -0.2
+		arm.material_override = hoodie
+		arm.position = Vector3(sx2, 1.18, 0)
+		arm.rotation.z = 0.18 if sx2 < 0 else -0.18
 		arm.layers = 2
 		body.add_child(arm)
 
@@ -631,7 +655,7 @@ func _build_viewmodel() -> void:
 	_vm.position = _vm_base
 	_cam.add_child(_vm)
 
-	var skin := _flat(Color(0.92, 0.72, 0.55))
+	var skin := _flat(Color(0.86, 0.68, 0.52))
 	# рука
 	_hand = Node3D.new()
 	_vm.add_child(_hand)

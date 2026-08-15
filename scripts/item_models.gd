@@ -12,17 +12,17 @@ func mat(color: Color, rough: float = 0.85) -> StandardMaterial3D:
 func metal(stone_tier: bool) -> StandardMaterial3D:
 	var m: StandardMaterial3D
 	if stone_tier:
-		m = mat(Color(0.55, 0.55, 0.58), 0.65)
+		m = mat(Color(0.45, 0.44, 0.42), 0.78)  # rough stone head
 	else:
-		m = mat(Color(0.78, 0.80, 0.85), 0.35)
-		m.metallic = 0.55
+		m = mat(Color(0.55, 0.56, 0.58), 0.48)  # worn steel Oxide-like
+		m.metallic = 0.65
 	return m
 
 
 func wood(stone_tier: bool) -> StandardMaterial3D:
 	if stone_tier:
-		return mat(Color(0.34, 0.21, 0.12), 0.95)
-	return mat(Color(0.52, 0.33, 0.16), 0.92)
+		return mat(Color(0.28, 0.18, 0.11), 0.95)
+	return mat(Color(0.4, 0.26, 0.14), 0.92)
 
 
 func leather() -> StandardMaterial3D:
@@ -35,10 +35,10 @@ func bone() -> StandardMaterial3D:
 
 func armor_mat(piece_id: String) -> StandardMaterial3D:
 	if piece_id.begins_with("bone_"):
-		return bone()
+		return mat(Color(0.78, 0.74, 0.66), 0.8)
 	if piece_id.begins_with("stone_"):
-		return metal(true)
-	return wood(false)
+		return mat(Color(0.42, 0.42, 0.44), 0.7)  # metal plates
+	return mat(Color(0.35, 0.28, 0.2), 0.92)  # wood/roadsign-ish scrap
 
 
 func box(parent: Node3D, size: Vector3, material: Material, pos: Vector3, rot: Vector3 = Vector3.ZERO) -> MeshInstance3D:
@@ -121,15 +121,14 @@ func build_tool(parent: Node3D, tool_id: String) -> void:
 
 
 func _sword(p: Node3D, w: Material, m: Material, wrap: Material) -> void:
-	# Меч СТОЙМЯ: рукоять внизу у кулака, клинок вверх (+Y)
-	# лёгкий наклон вперёд к центру экрана
-	cyl(p, 0.028, 0.032, 0.16, w, Vector3(0, 0.06, 0.0))  # рукоять
-	cyl(p, 0.034, 0.034, 0.05, wrap, Vector3(0, 0.06, 0.0))  # обмотка
-	ball(p, 0.04, m, Vector3(0, -0.04, 0.0), Vector3(1.0, 0.75, 1.0))  # навершие
-	box(p, Vector3(0.22, 0.04, 0.05), m, Vector3(0, 0.15, 0.0))  # гарда
-	box(p, Vector3(0.055, 0.48, 0.02), m, Vector3(0, 0.42, 0.0))  # клинок вверх
-	box(p, Vector3(0.018, 0.46, 0.024), mat(Color(0.9, 0.92, 0.95), 0.3), Vector3(0, 0.42, 0.0))
-	prism(p, Vector3(0.055, 0.10, 0.02), m, Vector3(0, 0.70, 0.0))  # остриё вверх
+	# Oxide-like scrap sword, upright in hand
+	cyl(p, 0.025, 0.03, 0.14, w, Vector3(0, 0.05, 0.0))
+	cyl(p, 0.032, 0.032, 0.06, wrap, Vector3(0, 0.05, 0.0))
+	box(p, Vector3(0.05, 0.05, 0.05), m, Vector3(0, -0.04, 0.0))  # pommel block
+	box(p, Vector3(0.2, 0.035, 0.045), m, Vector3(0, 0.14, 0.0))  # crossguard
+	box(p, Vector3(0.05, 0.5, 0.016), m, Vector3(0, 0.42, 0.0))  # blade
+	box(p, Vector3(0.012, 0.48, 0.02), mat(Color(0.7, 0.72, 0.74), 0.35), Vector3(0, 0.42, 0.0))
+	prism(p, Vector3(0.05, 0.09, 0.016), m, Vector3(0, 0.72, 0.0))
 
 
 func _pickaxe(p: Node3D, w: Material, m: Material, wrap: Material) -> void:
@@ -224,18 +223,14 @@ func _helm(p: Node3D, material: Material, trim: Material, id: String) -> void:
 
 
 func _helm_fps(p: Node3D, material: Material, trim: Material, id: String) -> void:
-	# Локально у камеры: обод и края в поле зрения
-	# верх
-	box(p, Vector3(0.55, 0.08, 0.45), material, Vector3(0, 0.28, -0.05))
-	# бока
-	box(p, Vector3(0.08, 0.28, 0.40), material, Vector3(-0.30, 0.10, -0.02))
-	box(p, Vector3(0.08, 0.28, 0.40), material, Vector3(0.30, 0.10, -0.02))
-	# низ-зад
-	box(p, Vector3(0.50, 0.08, 0.20), material, Vector3(0, -0.12, -0.18))
-	# козырёк
-	box(p, Vector3(0.48, 0.04, 0.16), trim, Vector3(0, 0.20, 0.18))
+	# Oxide FPS helmet rim — thin edges only
+	box(p, Vector3(0.62, 0.06, 0.5), material, Vector3(0, 0.32, -0.06))
+	box(p, Vector3(0.06, 0.22, 0.42), material, Vector3(-0.34, 0.12, -0.04))
+	box(p, Vector3(0.06, 0.22, 0.42), material, Vector3(0.34, 0.12, -0.04))
+	box(p, Vector3(0.55, 0.05, 0.18), material, Vector3(0, -0.05, -0.22))
+	box(p, Vector3(0.5, 0.03, 0.12), trim, Vector3(0, 0.24, 0.2))
 	if id.begins_with("stone_") or id.begins_with("bone_"):
-		box(p, Vector3(0.06, 0.12, 0.30), trim, Vector3(0, 0.34, -0.05))
+		box(p, Vector3(0.05, 0.1, 0.28), trim, Vector3(0, 0.38, -0.06))
 
 
 func _chest(p: Node3D, material: Material, trim: Material, id: String) -> void:
