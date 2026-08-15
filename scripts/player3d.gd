@@ -111,7 +111,10 @@ func _physics_process(delta: float) -> void:
 
 
 func take_damage(amount: int) -> void:
-	hp = clampi(hp - amount, 0, hp_max)
+	var def := Inv.total_defense()
+	# каждый пункт защиты снимает 1 урон, минимум 1
+	var dmg: int = maxi(1, amount - def)
+	hp = clampi(hp - dmg, 0, hp_max)
 
 
 func _respawn() -> void:

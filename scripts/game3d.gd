@@ -58,7 +58,7 @@ func _process(_delta: float) -> void:
 	for r in _labels:
 		_labels[r].text = "%s: %d" % [_rname(r), Inv.count(r)]
 	if _hp_label and _player:
-		_hp_label.text = "HP: %d/%d" % [_player.hp, _player.hp_max]
+		_hp_label.text = "HP: %d/%d  DEF: %d" % [_player.hp, _player.hp_max, Inv.total_defense()]
 	if _eq_label:
 		var eq := Controls.equipped
 		if eq != "" and Inv.count(eq) > 0:
@@ -538,10 +538,13 @@ func _build_player() -> void:
 
 func _build_hud() -> void:
 	var layer := CanvasLayer.new()
+	layer.layer = 10
+	layer.process_mode = Node.PROCESS_MODE_ALWAYS
 	add_child(layer)
 	var root := Control.new()
 	root.set_anchors_preset(Control.PRESET_FULL_RECT)
 	root.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	root.process_mode = Node.PROCESS_MODE_ALWAYS
 	layer.add_child(root)
 
 	var vbox := VBoxContainer.new()
@@ -588,9 +591,14 @@ func _build_hud() -> void:
 	exit_btn.pressed.connect(_exit_to_menu)
 	root.add_child(exit_btn)
 
-	# Инвентарь / Крафт — верх, слева от Выхода
+	# UI создаём сразу, до кнопок
+	_inv_ui = InventoryUIScr.new()
+	add_child(_inv_ui)
+
+	# Инвентарь / Крафт / Броня — верхний ряд (не перекрывать)
 	var inv_btn := Button.new()
 	inv_btn.text = "ИНВ"
+	inv_btn.focus_mode = Control.FOCUS_NONE
 	inv_btn.anchor_left = 1.0
 	inv_btn.anchor_right = 1.0
 	inv_btn.anchor_top = 0.0
@@ -600,11 +608,12 @@ func _build_hud() -> void:
 	inv_btn.offset_top = 16
 	inv_btn.offset_bottom = 72
 	inv_btn.add_theme_font_size_override("font_size", 22)
-	inv_btn.pressed.connect(func() -> void: _inv_ui.toggle_inv())
+	inv_btn.pressed.connect(_on_inv_pressed)
 	root.add_child(inv_btn)
 
 	var craft_btn := Button.new()
 	craft_btn.text = "КРАФТ"
+	craft_btn.focus_mode = Control.FOCUS_NONE
 	craft_btn.anchor_left = 1.0
 	craft_btn.anchor_right = 1.0
 	craft_btn.anchor_top = 0.0
@@ -614,8 +623,23 @@ func _build_hud() -> void:
 	craft_btn.offset_top = 16
 	craft_btn.offset_bottom = 72
 	craft_btn.add_theme_font_size_override("font_size", 22)
-	craft_btn.pressed.connect(func() -> void: _inv_ui.toggle_craft())
+	craft_btn.pressed.connect(_on_craft_pressed)
 	root.add_child(craft_btn)
+
+	var armor_btn := Button.new()
+	armor_btn.text = "БРОНЯ"
+	armor_btn.focus_mode = Control.FOCUS_NONE
+	armor_btn.anchor_left = 1.0
+	armor_btn.anchor_right = 1.0
+	armor_btn.anchor_top = 0.0
+	armor_btn.anchor_bottom = 0.0
+	armor_btn.offset_left = -310
+	armor_btn.offset_right = -162
+	armor_btn.offset_top = 80
+	armor_btn.offset_bottom = 136
+	armor_btn.add_theme_font_size_override("font_size", 20)
+	armor_btn.pressed.connect(_on_armor_pressed)
+	root.add_child(armor_btn)
 
 	_eq_label = Label.new()
 	_eq_label.anchor_left = 0.0
@@ -685,9 +709,6 @@ func _build_hud() -> void:
 	# Переименовать основную кнопку динамически? оставим, в build mode она ставит
 	g_btn.text = "ДЕЙСТВИЕ"
 
-	_inv_ui = InventoryUIScr.new()
-	add_child(_inv_ui)
-
 
 func _exit_to_menu() -> void:
 	if _inv_ui and _inv_ui.visible:
@@ -697,7 +718,6 @@ func _exit_to_menu() -> void:
 	Controls.attack_queued = false
 	Controls.ui_open = false
 	Controls.build_mode = false
-	get_tree().paused = false
 	get_tree().change_scene_to_file("res://scenes/MainMenu.tscn")
 
 
@@ -820,3 +840,18 @@ func _bname(id: String) -> String:
 			return "Костёр"
 		_:
 			return id
+
+
+func _on_inv_pressed() -> void:
+	if _inv_ui:
+		_inv_ui.toggle_inv()
+
+
+func _on_craft_pressed() -> void:
+	if _inv_ui:
+		_inv_ui.toggle_craft()
+
+
+func _on_armor_pressed() -> void:
+	if _inv_ui:
+		_inv_ui.toggle_armor()

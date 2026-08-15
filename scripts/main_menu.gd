@@ -51,8 +51,7 @@ func _play() -> void:
 	Controls.build_mode = false
 	Controls.build_piece = "wood_block"
 	Controls.build_rotate = 0
-	get_tree().paused = false
-	get_tree().change_scene_to_file("res://scenes/Game3D.tscn")
+		get_tree().change_scene_to_file("res://scenes/Game3D.tscn")
 
 
 func _exit() -> void:
