@@ -272,6 +272,44 @@ func _make_build_piece(pid: String) -> StaticBody3D:
 	var mat := _piece_mat(pid)
 	var mesh_i := MeshInstance3D.new()
 	var col := CollisionShape3D.new()
+	var bpath := AssetLib.build_path(pid)
+	if bpath != "":
+		var holder := Node3D.new()
+		n.add_child(holder)
+		var mdl := AssetLib.spawn_model(bpath, holder)
+		if mdl:
+			match pid:
+				"wood_wall", "stone_wall":
+					holder.scale = Vector3(2.2, 1.8, 1.0)
+					var bs := BoxShape3D.new()
+					bs.size = Vector3(4.0, 3.5, 0.4)
+					col.shape = bs
+					col.position = Vector3(0, 1.75, 0)
+					n.hp = 12
+				"wood_floor":
+					holder.scale = Vector3(4.0, 1.0, 4.0)
+					var bs2 := BoxShape3D.new()
+					bs2.size = Vector3(4.0, 0.25, 4.0)
+					col.shape = bs2
+					col.position = Vector3(0, 0.12, 0)
+					n.hp = 10
+				"wood_pillar":
+					holder.scale = Vector3(1.2, 1.8, 1.2)
+					var cs := CylinderShape3D.new()
+					cs.radius = 0.35
+					cs.height = 3.5
+					col.shape = cs
+					col.position = Vector3(0, 1.75, 0)
+					n.hp = 10
+				_:
+					holder.scale = Vector3(2.0, 2.0, 2.0)
+					var bs3 := BoxShape3D.new()
+					bs3.size = Vector3(2, 2, 2)
+					col.shape = bs3
+					col.position = Vector3(0, 1.0, 0)
+					n.hp = 5 if pid.begins_with("stone") else 4
+			n.add_child(col)
+			return n
 	match pid:
 		"wood_wall", "stone_wall":
 			var bm := BoxMesh.new()
@@ -531,7 +569,6 @@ func _animate(delta: float) -> void:
 
 
 func _build_body_model() -> void:
-	# Oxide-like survivor body (hoodie + jeans + boots). Torso on layer 2 (hidden in FPS).
 	if _armor_yaw == null:
 		_armor_yaw = Node3D.new()
 		_armor_yaw.name = "ArmorYaw"
@@ -539,118 +576,52 @@ func _build_body_model() -> void:
 	var body := Node3D.new()
 	body.name = "PlayerBody"
 	_armor_yaw.add_child(body)
-	var skin := _flat(Color(0.86, 0.68, 0.52))
-	var hoodie := _flat(Color(0.22, 0.28, 0.24))  # muted green-grey
+	var model := AssetLib.spawn_model(AssetLib.player_path(), body, Vector3(1.0, 1.0, 1.0), Vector3(0, PI, 0), Vector3(0, 0, 0))
+	if model:
+		_set_layers_recursive(model, 2)
+	_add_visible_legs(body)
+
+
+func _add_visible_legs(body: Node3D) -> void:
 	var jeans := _flat(Color(0.18, 0.22, 0.32))
 	var boot := _flat(Color(0.12, 0.09, 0.07))
-	var hair := _flat(Color(0.14, 0.1, 0.07))
-	var strap := _flat(Color(0.25, 0.2, 0.14))
-	# torso hoodie
-	var torso := MeshInstance3D.new()
-	var tb := BoxMesh.new()
-	tb.size = Vector3(0.5, 0.62, 0.3)
-	torso.mesh = tb
-	torso.material_override = hoodie
-	torso.position = Vector3(0, 1.2, 0)
-	torso.layers = 2
-	body.add_child(torso)
-	# hoodie hood bulge back
-	var hood := MeshInstance3D.new()
-	var hs0 := SphereMesh.new()
-	hs0.radius = 0.16
-	hs0.height = 0.28
-	hood.mesh = hs0
-	hood.material_override = hoodie
-	hood.position = Vector3(0, 1.48, -0.12)
-	hood.scale = Vector3(1.1, 0.7, 0.9)
-	hood.layers = 2
-	body.add_child(hood)
-	# shoulders
-	for sx in [-0.28, 0.28]:
-		var sh := MeshInstance3D.new()
-		var ss := SphereMesh.new()
-		ss.radius = 0.11
-		ss.height = 0.2
-		sh.mesh = ss
-		sh.material_override = hoodie
-		sh.position = Vector3(sx, 1.42, 0)
-		sh.layers = 2
-		body.add_child(sh)
-	# head
-	var head := MeshInstance3D.new()
-	var hs := SphereMesh.new()
-	hs.radius = 0.16
-	hs.height = 0.32
-	head.mesh = hs
-	head.material_override = skin
-	head.position = Vector3(0, 1.62, 0.02)
-	head.layers = 2
-	body.add_child(head)
-	var hair_m := MeshInstance3D.new()
-	var hh := SphereMesh.new()
-	hh.radius = 0.17
-	hh.height = 0.26
-	hair_m.mesh = hh
-	hair_m.material_override = hair
-	hair_m.position = Vector3(0, 1.72, -0.03)
-	hair_m.scale = Vector3(1.05, 0.65, 1.05)
-	hair_m.layers = 2
-	body.add_child(hair_m)
-	# backpack scrap
-	var pack := MeshInstance3D.new()
-	var pb := BoxMesh.new()
-	pb.size = Vector3(0.32, 0.4, 0.14)
-	pack.mesh = pb
-	pack.material_override = strap
-	pack.position = Vector3(0, 1.22, -0.22)
-	pack.layers = 2
-	body.add_child(pack)
-	# legs jeans
 	for sx in [-0.12, 0.12]:
 		var thigh := MeshInstance3D.new()
 		var tc := CylinderMesh.new()
-		tc.top_radius = 0.095
-		tc.bottom_radius = 0.085
-		tc.height = 0.42
-		tc.radial_segments = 8
+		tc.top_radius = 0.09
+		tc.bottom_radius = 0.08
+		tc.height = 0.4
 		thigh.mesh = tc
 		thigh.material_override = jeans
-		thigh.position = Vector3(sx, 0.72, 0)
+		thigh.position = Vector3(sx, 0.7, 0)
 		body.add_child(thigh)
 		var shin := MeshInstance3D.new()
 		var sc := CylinderMesh.new()
-		sc.top_radius = 0.08
-		sc.bottom_radius = 0.07
-		sc.height = 0.4
-		sc.radial_segments = 8
+		sc.top_radius = 0.075
+		sc.bottom_radius = 0.065
+		sc.height = 0.38
 		shin.mesh = sc
 		shin.material_override = jeans
 		shin.position = Vector3(sx, 0.32, 0)
 		body.add_child(shin)
 		var ft := MeshInstance3D.new()
 		var fb := BoxMesh.new()
-		fb.size = Vector3(0.13, 0.1, 0.3)
+		fb.size = Vector3(0.12, 0.09, 0.28)
 		ft.mesh = fb
 		ft.material_override = boot
-		ft.position = Vector3(sx, 0.06, 0.07)
+		ft.position = Vector3(sx, 0.06, 0.06)
 		body.add_child(ft)
-	# arms
-	for sx2 in [-0.38, 0.38]:
-		var arm := MeshInstance3D.new()
-		var ac := CylinderMesh.new()
-		ac.top_radius = 0.06
-		ac.bottom_radius = 0.065
-		ac.height = 0.52
-		ac.radial_segments = 8
-		arm.mesh = ac
-		arm.material_override = hoodie
-		arm.position = Vector3(sx2, 1.18, 0)
-		arm.rotation.z = 0.18 if sx2 < 0 else -0.18
-		arm.layers = 2
-		body.add_child(arm)
+
+
+func _set_layers_recursive(n: Node, layer: int) -> void:
+	if n is VisualInstance3D:
+		(n as VisualInstance3D).layers = layer
+	for c in n.get_children():
+		_set_layers_recursive(c, layer)
 
 
 func _build_viewmodel() -> void:
+
 	_vm = Node3D.new()
 	_vm.position = _vm_base
 	_cam.add_child(_vm)
@@ -731,7 +702,28 @@ func _update_tool_model() -> void:
 		_hand.visible = true
 		return
 	_hand.visible = true
-	_models.build_tool(_tool_root, key)
+	var path := AssetLib.weapon_path(key)
+	var asset_n: Node3D = null
+	if path != "":
+		asset_n = AssetLib.spawn_model(path, _tool_root)
+	if asset_n:
+		var base := key.replace("stone_", "")
+		if base == "sword":
+			asset_n.rotation = Vector3(-0.15, 1.0, 1.45)
+			asset_n.position = Vector3(0.0, 0.05, 0.0)
+			asset_n.scale = Vector3(1.35, 1.35, 1.35)
+		elif base == "bow" or base == "crossbow":
+			asset_n.rotation = Vector3(0.2, 1.1, 0.15)
+			asset_n.position = Vector3(0.0, 0.08, -0.05)
+			asset_n.scale = Vector3(1.2, 1.2, 1.2)
+		elif base == "rod":
+			asset_n.rotation = Vector3(0.9, 0.4, -0.2)
+			asset_n.scale = Vector3(1.15, 1.15, 1.15)
+		else:
+			asset_n.rotation = Vector3(0.7, 0.6, -0.25)
+			asset_n.scale = Vector3(1.25, 1.25, 1.25)
+	else:
+		_models.build_tool(_tool_root, key)
 
 
 func _update_armor_model() -> void:
@@ -759,25 +751,33 @@ func _update_armor_model() -> void:
 			_fps_armor.remove_child(c2)
 			c2.free()
 
-	# ноги/ботинки — на теле (видно если смотреть вниз)
-	for slot in ["legs", "feet"]:
+	for slot in ["head", "chest", "legs", "feet"]:
 		var pid := str(Inv.armor.get(slot, ""))
 		if pid == "":
 			continue
 		var holder := Node3D.new()
 		holder.name = slot
 		_armor_root.add_child(holder)
-		_models.build_armor_piece(holder, pid, false)
-
-	# нагрудник только на теле (не лезет в FPS-экран)
-	var chest_id := str(Inv.armor.get("chest", ""))
-	if chest_id != "":
-		var ch := Node3D.new()
-		ch.name = "chest"
-		_armor_root.add_child(ch)
-		_models.build_armor_piece(ch, chest_id, false)
-
-	# шлем — FPS-накладка по краям экрана
+		var ap := AssetLib.armor_path(pid)
+		var mdl := AssetLib.spawn_model(ap, holder)
+		if mdl:
+			match slot:
+				"head":
+					holder.position = Vector3(0, 1.55, 0.02)
+					holder.scale = Vector3(0.4, 0.4, 0.4)
+					_set_layers_recursive(holder, 2)
+				"chest":
+					holder.position = Vector3(0, 1.2, 0.16)
+					holder.scale = Vector3(0.65, 0.65, 0.65)
+					_set_layers_recursive(holder, 2)
+				"legs":
+					holder.position = Vector3(0, 0.75, 0.12)
+					holder.scale = Vector3(0.5, 0.5, 0.5)
+				"feet":
+					holder.position = Vector3(0.12, 0.12, 0.1)
+					holder.scale = Vector3(0.3, 0.3, 0.3)
+		else:
+			_models.build_armor_piece(holder, pid, false)
 	var helm_id := str(Inv.armor.get("head", ""))
 	if helm_id != "" and _fps_armor:
 		var hh := Node3D.new()

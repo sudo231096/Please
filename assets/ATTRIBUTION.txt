@@ -1,0 +1,17 @@
+Third-party CC0 / free game assets used in Ashveil:
+
+1) KayKit Character Pack Adventures 1.0 — https://github.com/KayKit-Game-Assets/KayKit-Character-Pack-Adventures-1.0
+   License: see package LICENSE (KayKit free assets, typically CC0)
+   Used: player character (Rogue_Hooded), weapons (sword/axe/crossbow/etc.), shields
+
+2) KayKit Medieval Hexagon Pack 1.0 — https://github.com/KayKit-Game-Assets/KayKit-Medieval-Hexagon-Pack-1.0
+   Used: trees, rocks, nature props
+
+3) KayKit Prototype Bits 1.0 — https://github.com/KayKit-Game-Assets/KayKit-Prototype-Bits-1.0
+   Used: walls, floors, pillars, cubes for building
+
+4) Khronos glTF Sample Models (Fox, Duck) — https://github.com/KhronosGroup/glTF-Sample-Models
+   License: various sample licenses (permissive)
+   Used as temporary animal stand-ins (scaled/tinted)
+
+These are NOT assets from Oxide: Survival Island.

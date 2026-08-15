@@ -14,6 +14,7 @@ config/icon="res://icon.png"
 
 Controls="*res://scripts/controls.gd"
 Inv="*res://scripts/inv.gd"
+AssetLib="*res://scripts/asset_lib.gd"
 
 [display]
 

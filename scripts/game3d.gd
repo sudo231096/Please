@@ -568,134 +568,76 @@ func _spawn_animals() -> void:
 
 
 func _spawn_tree(pos: Vector3) -> void:
-	# Oxide/Rust-like: tapered trunk + layered cone canopy (not candy sphere)
 	var n := StaticBody3D.new()
 	n.set_script(ResNode)
 	n.res_type = "wood"
 	n.hp = 3
 	n.position = pos
-	var s := _rng.randf_range(0.85, 1.35)
 	n.rotation.y = _rng.randf() * TAU
-	var kind := _rng.randi() % 3  # 0 pine, 1 round oak, 2 birch-ish
-	var trunk_h := (2.6 if kind == 0 else 2.1) * s
-	var trunk := MeshInstance3D.new()
-	var cm := CylinderMesh.new()
-	cm.top_radius = (0.12 if kind != 0 else 0.1) * s
-	cm.bottom_radius = (0.28 if kind != 0 else 0.22) * s
-	cm.height = trunk_h
-	cm.radial_segments = 8
-	trunk.mesh = cm
-	trunk.material_override = _mat_wood
-	trunk.position = Vector3(0, trunk_h * 0.5, 0)
-	trunk.visibility_range_end = 200.0
-	trunk.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-	n.add_child(trunk)
-	if kind == 0:
-		# pine: 3 stacked cones
-		for k in range(3):
-			var cone := MeshInstance3D.new()
-			var sm := SphereMesh.new()
-			var rr := (1.15 - float(k) * 0.22) * s
-			sm.radius = rr
-			sm.height = rr * 1.6
-			sm.radial_segments = 8
-			sm.rings = 4
-			cone.mesh = sm
-			cone.material_override = _mat_foliage
-			cone.position = Vector3(0, trunk_h * 0.55 + float(k) * 0.7 * s, 0)
-			cone.scale = Vector3(1.0, 0.75, 1.0)
-			cone.visibility_range_end = 200.0
-			cone.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-			n.add_child(cone)
-	else:
-		# broadleaf: 3 overlapping crown blobs
-		var offsets := [Vector3(0, 0, 0), Vector3(0.45 * s, -0.15 * s, 0.2 * s), Vector3(-0.4 * s, -0.1 * s, -0.25 * s)]
-		for i in range(offsets.size()):
-			var fol := MeshInstance3D.new()
-			var sm2 := SphereMesh.new()
-			var rr2 := (1.05 if i == 0 else 0.7) * s
-			sm2.radius = rr2
-			sm2.height = rr2 * 1.5
-			sm2.radial_segments = 8
-			sm2.rings = 4
-			fol.mesh = sm2
-			fol.material_override = _mat_foliage
-			fol.position = Vector3(offsets[i].x, trunk_h + 0.35 * s + offsets[i].y, offsets[i].z)
-			fol.visibility_range_end = 200.0
-			fol.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-			n.add_child(fol)
+	var s := _rng.randf_range(0.9, 1.35)
+	var path := AssetLib.tree_path(_rng.randi())
+	var holder := Node3D.new()
+	n.add_child(holder)
+	var mdl := AssetLib.spawn_model(path, holder, Vector3(s, s, s))
+	if mdl == null:
+		# fallback simple
+		var trunk := MeshInstance3D.new()
+		var cm := CylinderMesh.new()
+		cm.top_radius = 0.15 * s
+		cm.bottom_radius = 0.25 * s
+		cm.height = 2.2 * s
+		trunk.mesh = cm
+		trunk.material_override = _mat_wood
+		trunk.position = Vector3(0, 1.1 * s, 0)
+		n.add_child(trunk)
 	var col := CollisionShape3D.new()
 	var cb := CylinderShape3D.new()
-	cb.radius = 0.4 * s
-	cb.height = trunk_h + 1.0 * s
+	cb.radius = 0.5 * s
+	cb.height = 3.0 * s
 	col.shape = cb
-	col.position = Vector3(0, (trunk_h + 1.0 * s) * 0.4, 0)
+	col.position = Vector3(0, 1.4 * s, 0)
 	n.add_child(col)
 	add_child(n)
 
 
 func _spawn_rock(pos: Vector3, rtype: String) -> void:
-	# Oxide-like jagged boulder cluster
 	var n := StaticBody3D.new()
 	n.set_script(ResNode)
 	n.res_type = rtype
 	n.hp = 3 if rtype == "stone" else 2
 	n.position = pos
 	n.rotation.y = _rng.randf() * TAU
-	var mat: Material = _mat_stone if rtype == "stone" else _mat_sulfur
-	var s := _rng.randf_range(0.9, 1.35)
-	var main := MeshInstance3D.new()
-	var sm := SphereMesh.new()
-	sm.radius = 0.6 * s
-	sm.height = 0.95 * s
-	sm.radial_segments = 8
-	sm.rings = 4
-	main.mesh = sm
-	main.material_override = mat
-	main.position = Vector3(0, 0.35 * s, 0)
-	main.scale = Vector3(_rng.randf_range(1.15, 1.45), _rng.randf_range(0.55, 0.85), _rng.randf_range(1.0, 1.35))
-	main.rotation = Vector3(_rng.randf_range(-0.35, 0.35), 0, _rng.randf_range(-0.25, 0.25))
-	main.visibility_range_end = 180.0
-	main.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-	n.add_child(main)
-	# 1-2 side chunks
-	for i in range(1 + _rng.randi() % 2):
-		var bit := MeshInstance3D.new()
-		var bsm := SphereMesh.new()
-		var br := _rng.randf_range(0.22, 0.38) * s
-		bsm.radius = br
-		bsm.height = br * 1.5
-		bsm.radial_segments = 6
-		bsm.rings = 3
-		bit.mesh = bsm
-		bit.material_override = mat
-		var a := _rng.randf() * TAU
-		bit.position = Vector3(cos(a) * 0.4 * s, br * 0.4, sin(a) * 0.4 * s)
-		bit.scale = Vector3(1.2, 0.6, 1.1)
-		bit.visibility_range_end = 160.0
-		bit.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-		n.add_child(bit)
-	if rtype == "sulfur":
+	var s := _rng.randf_range(0.85, 1.4)
+	var path := AssetLib.rock_path(_rng.randi())
+	var holder := Node3D.new()
+	n.add_child(holder)
+	var mdl := AssetLib.spawn_model(path, holder, Vector3(s, s, s))
+	if mdl and rtype == "sulfur":
+		# yellow tint overlay crystal
 		var crystal_mat := StandardMaterial3D.new()
-		crystal_mat.albedo_color = Color(0.92, 0.82, 0.2)
-		crystal_mat.roughness = 0.35
+		crystal_mat.albedo_color = Color(0.9, 0.8, 0.2)
 		crystal_mat.emission_enabled = true
 		crystal_mat.emission = Color(0.5, 0.4, 0.05)
-		crystal_mat.emission_energy_multiplier = 0.35
-		for j in range(2):
-			var cr := MeshInstance3D.new()
-			var prm := PrismMesh.new()
-			prm.size = Vector3(0.14 * s, 0.32 * s, 0.12 * s)
-			cr.mesh = prm
-			cr.material_override = crystal_mat
-			var a2 := _rng.randf() * TAU
-			cr.position = Vector3(cos(a2) * 0.15 * s, 0.4 * s, sin(a2) * 0.15 * s)
-			cr.rotation = Vector3(_rng.randf_range(-0.2, 0.2), a2, _rng.randf_range(-0.2, 0.2))
-			cr.visibility_range_end = 140.0
-			n.add_child(cr)
+		crystal_mat.emission_energy_multiplier = 0.4
+		var cr := MeshInstance3D.new()
+		var prm := PrismMesh.new()
+		prm.size = Vector3(0.2 * s, 0.35 * s, 0.15 * s)
+		cr.mesh = prm
+		cr.material_override = crystal_mat
+		cr.position = Vector3(0.1 * s, 0.45 * s, 0)
+		n.add_child(cr)
+	if mdl == null:
+		var main := MeshInstance3D.new()
+		var sm := SphereMesh.new()
+		sm.radius = 0.55 * s
+		sm.height = 0.9 * s
+		main.mesh = sm
+		main.material_override = _mat_stone if rtype == "stone" else _mat_sulfur
+		main.position = Vector3(0, 0.35 * s, 0)
+		n.add_child(main)
 	var col := CollisionShape3D.new()
 	var bs := BoxShape3D.new()
-	bs.size = Vector3(1.35 * s, 0.95 * s, 1.35 * s)
+	bs.size = Vector3(1.4 * s, 1.0 * s, 1.4 * s)
 	col.shape = bs
 	col.position = Vector3(0, 0.4 * s, 0)
 	n.add_child(col)
@@ -703,6 +645,7 @@ func _spawn_rock(pos: Vector3, rtype: String) -> void:
 
 
 func _build_player() -> void:
+
 	var p := Player3DScn.instantiate()
 	var sp := _pos_in_biomes([Biome.PLAINS, Biome.FOREST])
 	var hy := height_at(sp.x, sp.z) + 2.0
