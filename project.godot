@@ -1,19 +1,14 @@
 ;
-; Neon Clash — mobile FPS (Standoff-like)
+; Skibidi toilet survival
 ;
 config_version=5
 
 [application]
 
-config/name="Neon Clash"
-run/main_scene="res://scenes/MainMenu.tscn"
+config/name="Skibidi toilet survival"
+run/main_scene="res://scenes/Main.tscn"
 config/features=PackedStringArray("4.7", "GL Compatibility")
 config/icon="res://icon.png"
-
-[autoload]
-
-GameState="*res://scripts/game_state.gd"
-Controls="*res://scripts/controls.gd"
 
 [display]
 
