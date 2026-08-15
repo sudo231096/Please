@@ -1,1 +1,9 @@
-Empty Godot project. APK build via GitHub Actions.
+# Skibidi Toilet Survival
+
+## Меню
+- **Играть** — заход в 3D-сцену за выбранного агента
+- **Магазин** — агенты (стартовый: Камера Мен)
+- **Промокоды** — SKIBIDI, CAMERA, TOILET, FREE100
+
+## Стартовый агент
+**Камера Мен** — уже открыт.
