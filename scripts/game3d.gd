@@ -5,6 +5,7 @@ const Player3DScn := preload("res://scenes/Player3D.tscn")
 const ResNode := preload("res://scripts/resource_node.gd")
 const JoystickScn := preload("res://scripts/joystick.gd")
 const AnimalScn := preload("res://scripts/animal3d.gd")
+const InventoryUIScr := preload("res://scripts/inventory_ui.gd")
 
 enum Biome { WATER, SAND, PLAINS, FOREST, SNOW, ROCK }
 
@@ -21,6 +22,8 @@ var _rng := RandomNumberGenerator.new()
 var _labels := {}
 var _hp_label: Label
 var _player
+var _inv_ui
+var _eq_label: Label
 
 var _elev := FastNoiseLite.new()
 var _moist := FastNoiseLite.new()
@@ -53,6 +56,12 @@ func _process(_delta: float) -> void:
 		_labels[r].text = "%s: %d" % [_rname(r), Inv.count(r)]
 	if _hp_label and _player:
 		_hp_label.text = "HP: %d/%d" % [_player.hp, _player.hp_max]
+	if _eq_label:
+		var eq := Controls.equipped
+		if eq != "" and Inv.count(eq) > 0:
+			_eq_label.text = "В руках: %s (%d/%d)" % [_tname(eq), Inv.durability_of(eq), Inv.max_dur(eq)]
+		else:
+			_eq_label.text = "В руках: кулак"
 
 
 # --- Биомы ---
@@ -565,11 +574,59 @@ func _build_hud() -> void:
 	exit_btn.pressed.connect(_exit_to_menu)
 	root.add_child(exit_btn)
 
+	# Инвентарь / Крафт — верх, слева от Выхода
+	var inv_btn := Button.new()
+	inv_btn.text = "ИНВ"
+	inv_btn.anchor_left = 1.0
+	inv_btn.anchor_right = 1.0
+	inv_btn.anchor_top = 0.0
+	inv_btn.anchor_bottom = 0.0
+	inv_btn.offset_left = -310
+	inv_btn.offset_right = -162
+	inv_btn.offset_top = 16
+	inv_btn.offset_bottom = 72
+	inv_btn.add_theme_font_size_override("font_size", 22)
+	inv_btn.pressed.connect(func() -> void: _inv_ui.toggle_inv())
+	root.add_child(inv_btn)
+
+	var craft_btn := Button.new()
+	craft_btn.text = "КРАФТ"
+	craft_btn.anchor_left = 1.0
+	craft_btn.anchor_right = 1.0
+	craft_btn.anchor_top = 0.0
+	craft_btn.anchor_bottom = 0.0
+	craft_btn.offset_left = -470
+	craft_btn.offset_right = -322
+	craft_btn.offset_top = 16
+	craft_btn.offset_bottom = 72
+	craft_btn.add_theme_font_size_override("font_size", 22)
+	craft_btn.pressed.connect(func() -> void: _inv_ui.toggle_craft())
+	root.add_child(craft_btn)
+
+	_eq_label = Label.new()
+	_eq_label.anchor_left = 0.0
+	_eq_label.anchor_top = 1.0
+	_eq_label.anchor_right = 0.0
+	_eq_label.anchor_bottom = 1.0
+	_eq_label.offset_left = 16
+	_eq_label.offset_top = -48
+	_eq_label.offset_right = 420
+	_eq_label.offset_bottom = -12
+	_eq_label.add_theme_font_size_override("font_size", 20)
+	root.add_child(_eq_label)
+
+	_inv_ui = InventoryUIScr.new()
+	add_child(_inv_ui)
+
 
 func _exit_to_menu() -> void:
+	if _inv_ui and _inv_ui.visible:
+		_inv_ui.close()
 	Controls.move_vector = Vector2.ZERO
 	Controls.jump_queued = false
 	Controls.attack_queued = false
+	Controls.ui_open = false
+	get_tree().paused = false
 	get_tree().change_scene_to_file("res://scenes/MainMenu.tscn")
 
 
@@ -601,3 +658,33 @@ func _rname(r: String) -> String:
 			return "Мясо"
 		_:
 			return r
+
+
+func _tname(id: String) -> String:
+	match id:
+		"axe":
+			return "Топор"
+		"pickaxe":
+			return "Кирка"
+		"sword":
+			return "Меч"
+		"bow":
+			return "Лук"
+		"crossbow":
+			return "Арбалет"
+		"rod":
+			return "Удочка"
+		"stone_axe":
+			return "Кам. топор"
+		"stone_pickaxe":
+			return "Кам. кирка"
+		"stone_sword":
+			return "Кам. меч"
+		"stone_bow":
+			return "Кам. лук"
+		"stone_crossbow":
+			return "Кам. арбалет"
+		"stone_rod":
+			return "Кам. удочка"
+		_:
+			return id

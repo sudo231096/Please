@@ -28,6 +28,8 @@ func _ready() -> void:
 
 
 func _input(event: InputEvent) -> void:
+	if Controls.ui_open:
+		return
 	if event is InputEventScreenDrag:
 		var size := get_viewport().get_visible_rect().size
 		if event.position.x > size.x * 0.5 and event.position.y < size.y * 0.7:
@@ -37,6 +39,8 @@ func _input(event: InputEvent) -> void:
 
 
 func _physics_process(delta: float) -> void:
+	if Controls.ui_open:
+		return
 	if hp <= 0:
 		_respawn()
 		return
@@ -94,12 +98,43 @@ func _respawn() -> void:
 func _use() -> void:
 	_punch = 0.28
 	_ray.force_raycast_update()
-	if _ray.is_colliding():
-		var col = _ray.get_collider()
-		if col and col.has_method("gather"):
+	if not _ray.is_colliding():
+		return
+	var col = _ray.get_collider()
+	if col == null:
+		return
+	var eq := Controls.equipped
+	if eq != "" and Inv.count(eq) <= 0:
+		Controls.equipped = ""
+		eq = ""
+	if col.has_method("gather"):
+		var rtype := ""
+		if "res_type" in col:
+			rtype = str(col.res_type)
+		var hits := 1
+		if rtype == "wood" and (eq == "axe" or eq == "stone_axe"):
+			hits = 3 if eq == "stone_axe" else 2
+		elif (rtype == "stone" or rtype == "sulfur") and (eq == "pickaxe" or eq == "stone_pickaxe"):
+			hits = 3 if eq == "stone_pickaxe" else 2
+		for _i in range(hits):
+			if not is_instance_valid(col):
+				break
 			col.gather()
-		elif col and col.has_method("hit"):
-			col.hit(1)
+		if eq != "" and Inv.is_tool(eq):
+			Inv.use_tool(eq)
+			if Inv.count(eq) <= 0:
+				Controls.equipped = ""
+	elif col.has_method("hit"):
+		var dmg := 1
+		if eq == "sword" or eq == "stone_sword":
+			dmg = 3 if eq == "stone_sword" else 2
+		elif eq == "axe" or eq == "stone_axe":
+			dmg = 2
+		col.hit(dmg)
+		if eq != "" and Inv.is_tool(eq):
+			Inv.use_tool(eq)
+			if Inv.count(eq) <= 0:
+				Controls.equipped = ""
 
 
 func _animate(delta: float) -> void:

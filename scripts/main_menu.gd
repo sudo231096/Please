@@ -44,6 +44,11 @@ func _ready() -> void:
 
 
 func _play() -> void:
+	# новый заход — чистый инвентарь
+	Inv.restore({"items": {}, "dur": {}})
+	Controls.equipped = ""
+	Controls.ui_open = false
+	get_tree().paused = false
 	get_tree().change_scene_to_file("res://scenes/Game3D.tscn")
 
 
