@@ -9,6 +9,7 @@ const BUILD_RANGE := 6.0
 const GRID := 1.0
 
 const BuildableScr := preload("res://scripts/buildable.gd")
+const ItemModels := preload("res://scripts/item_models.gd")
 
 var hp := MAX_HP
 var hp_max := MAX_HP
@@ -21,6 +22,8 @@ var _ray: RayCast3D
 var _vm: Node3D
 var _hand: Node3D
 var _tool_root: Node3D
+var _armor_root: Node3D
+var _shown_armor := ""
 var _vm_base := Vector3(0.35, -0.4, -0.6)
 var _punch := 0.0
 var _bob := 0.0
@@ -42,6 +45,7 @@ func _ready() -> void:
 	_ray.collision_mask = 1  # world + static
 	_build_viewmodel()
 	_build_ghost()
+	_update_armor_model()
 
 
 func _input(event: InputEvent) -> void:
@@ -98,6 +102,7 @@ func _physics_process(delta: float) -> void:
 	move_and_slide()
 
 	_update_tool_model()
+	_update_armor_model()
 	_update_build_ghost()
 
 	if Controls.attack_queued:
@@ -514,139 +519,56 @@ func _update_tool_model() -> void:
 
 
 func _spawn_tool_mesh(id: String) -> void:
-	var wood := _flat(Color(0.42, 0.26, 0.14))
-	var stone := _flat(Color(0.55, 0.55, 0.58))
-	var dark := _flat(Color(0.18, 0.18, 0.2))
-	var metal := stone if id.begins_with("stone_") else _flat(Color(0.62, 0.62, 0.65))
-	if id.begins_with("stone_"):
-		wood = _flat(Color(0.35, 0.22, 0.12))
-		metal = _flat(Color(0.45, 0.45, 0.48))
-
-	var base: String = str(id).replace("stone_", "")
-	match base:
-		"axe":
-			_add_handle(wood, 0.55, 0.03)
-			var head := MeshInstance3D.new()
-			var bx := BoxMesh.new()
-			bx.size = Vector3(0.22, 0.12, 0.08)
-			bx.material = metal
-			head.mesh = bx
-			head.position = Vector3(0.08, 0.28, 0)
-			_tool_root.add_child(head)
-			var blade := MeshInstance3D.new()
-			var pr := PrismMesh.new()
-			pr.size = Vector3(0.16, 0.14, 0.04)
-			pr.material = metal
-			blade.mesh = pr
-			blade.position = Vector3(0.18, 0.28, 0)
-			blade.rotation = Vector3(0, 0, -PI * 0.5)
-			_tool_root.add_child(blade)
-		"pickaxe":
-			_add_handle(wood, 0.55, 0.028)
-			var bar := MeshInstance3D.new()
-			var bb := BoxMesh.new()
-			bb.size = Vector3(0.36, 0.06, 0.06)
-			bb.material = metal
-			bar.mesh = bb
-			bar.position = Vector3(0, 0.28, 0)
-			_tool_root.add_child(bar)
-			for s in [-1.0, 1.0]:
-				var tip := MeshInstance3D.new()
-				var pr2 := PrismMesh.new()
-				pr2.size = Vector3(0.08, 0.12, 0.05)
-				pr2.material = metal
-				tip.mesh = pr2
-				tip.position = Vector3(s * 0.20, 0.28, 0)
-				tip.rotation = Vector3(0, 0, s * 0.9)
-				_tool_root.add_child(tip)
-		"sword":
-			_add_handle(wood, 0.22, 0.035)
-			var guard := MeshInstance3D.new()
-			var g := BoxMesh.new()
-			g.size = Vector3(0.18, 0.04, 0.06)
-			g.material = metal
-			guard.mesh = g
-			guard.position = Vector3(0, 0.12, 0)
-			_tool_root.add_child(guard)
-			var blade2 := MeshInstance3D.new()
-			var bl := BoxMesh.new()
-			bl.size = Vector3(0.06, 0.45, 0.02)
-			bl.material = metal
-			blade2.mesh = bl
-			blade2.position = Vector3(0, 0.36, 0)
-			_tool_root.add_child(blade2)
-			var tip2 := MeshInstance3D.new()
-			var pr3 := PrismMesh.new()
-			pr3.size = Vector3(0.06, 0.08, 0.02)
-			pr3.material = metal
-			tip2.mesh = pr3
-			tip2.position = Vector3(0, 0.62, 0)
-			_tool_root.add_child(tip2)
-		"bow", "crossbow":
-			# лук — дуга + тетива
-			var limb := MeshInstance3D.new()
-			var lc := CylinderMesh.new()
-			lc.top_radius = 0.02
-			lc.bottom_radius = 0.025
-			lc.height = 0.55
-			lc.material = wood
-			limb.mesh = lc
-			limb.position = Vector3(0.05, 0.15, 0)
-			limb.rotation.z = 0.35
-			_tool_root.add_child(limb)
-			var limb2 := MeshInstance3D.new()
-			limb2.mesh = lc.duplicate()
-			limb2.position = Vector3(-0.05, 0.15, 0)
-			limb2.rotation.z = -0.35
-			_tool_root.add_child(limb2)
-			if base == "crossbow":
-				var stock := MeshInstance3D.new()
-				var sb := BoxMesh.new()
-				sb.size = Vector3(0.08, 0.12, 0.35)
-				sb.material = wood
-				stock.mesh = sb
-				stock.position = Vector3(0, 0.05, 0.05)
-				_tool_root.add_child(stock)
-				var bowbar := MeshInstance3D.new()
-				var bb2 := BoxMesh.new()
-				bb2.size = Vector3(0.4, 0.04, 0.04)
-				bb2.material = wood
-				bowbar.mesh = bb2
-				bowbar.position = Vector3(0, 0.12, -0.1)
-				_tool_root.add_child(bowbar)
-		"rod":
-			_add_handle(wood, 0.7, 0.02)
-			var tip := MeshInstance3D.new()
-			var tc := CylinderMesh.new()
-			tc.top_radius = 0.008
-			tc.bottom_radius = 0.018
-			tc.height = 0.25
-			tc.material = dark
-			tip.mesh = tc
-			tip.position = Vector3(0, 0.45, 0)
-			_tool_root.add_child(tip)
-		_:
-			_add_handle(wood, 0.4, 0.03)
-
-	# лёгкий наклон «в руках»
-	_tool_root.rotation = Vector3(0.9, 0.4, -0.2)
+	ItemModels.build_tool(_tool_root, id)
+	# наклон «в руках» у камеры
+	_tool_root.rotation = Vector3(0.95, 0.55, -0.25)
+	_tool_root.scale = Vector3(1.15, 1.15, 1.15)
 
 
-func _add_handle(mat: Material, h: float, r: float) -> void:
-	var handle := MeshInstance3D.new()
-	var c := CylinderMesh.new()
-	c.top_radius = r * 0.85
-	c.bottom_radius = r
-	c.height = h
-	c.radial_segments = 8
-	c.material = mat
-	handle.mesh = c
-	handle.position = Vector3(0, h * 0.35, 0)
-	_tool_root.add_child(handle)
+func _update_armor_model() -> void:
+	var key := "%s|%s|%s|%s" % [
+		str(Inv.armor.get("head", "")),
+		str(Inv.armor.get("chest", "")),
+		str(Inv.armor.get("legs", "")),
+		str(Inv.armor.get("feet", "")),
+	]
+	if key == _shown_armor and _armor_root != null:
+		return
+	_shown_armor = key
+	if _armor_root == null:
+		_armor_root = Node3D.new()
+		_armor_root.name = "ArmorBody"
+		add_child(_armor_root)
+	# clear body armor
+	while _armor_root.get_child_count() > 0:
+		var c := _armor_root.get_child(0)
+		_armor_root.remove_child(c)
+		c.free()
+	# clear old helm on camera
+	if _cam:
+		var old_h := _cam.get_node_or_null("ArmorHelm")
+		if old_h:
+			_cam.remove_child(old_h)
+			old_h.free()
+	# body pieces (видны если смотреть вниз)
+	for slot in ["chest", "legs", "feet"]:
+		var pid := str(Inv.armor.get(slot, ""))
+		if pid == "":
+			continue
+		var holder := Node3D.new()
+		holder.name = slot
+		_armor_root.add_child(holder)
+		ItemModels.build_armor_piece(holder, pid)
+	# шлем — на камере, края в FPS
+	var helm_id := str(Inv.armor.get("head", ""))
+	if helm_id != "" and _cam:
+		var hh := Node3D.new()
+		hh.name = "ArmorHelm"
+		_cam.add_child(hh)
+		ItemModels.build_armor_piece(hh, helm_id)
+		# модель шлема строится вокруг y=1.62 мировых; сдвинем в локаль камеры
+		hh.position = Vector3(0, -1.62, 0)
 
 
 func _flat(color: Color) -> StandardMaterial3D:
-	var m := StandardMaterial3D.new()
-	m.albedo_color = color
-	m.roughness = 0.85
-	return m
+	return ItemModels.flat(color)
