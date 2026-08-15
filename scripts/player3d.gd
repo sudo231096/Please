@@ -522,7 +522,7 @@ func _spawn_tool_mesh(id: String) -> void:
 		wood = _flat(Color(0.35, 0.22, 0.12))
 		metal = _flat(Color(0.45, 0.45, 0.48))
 
-	var base := id.replace("stone_", "")
+	var base: String = str(id).replace("stone_", "")
 	match base:
 		"axe":
 			_add_handle(wood, 0.55, 0.03)

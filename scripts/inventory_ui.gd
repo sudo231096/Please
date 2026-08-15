@@ -168,7 +168,7 @@ func _build() -> void:
 		var names := ["Инвентарь", "Крафт", "Броня"]
 		var b := _btn(names[i], Vector2(0, 48))
 		b.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-		var idx := i
+		var idx: int = int(i)
 		b.pressed.connect(func() -> void:
 			_tab = idx
 			_refresh_tabs()
@@ -271,8 +271,8 @@ func _fill_inv() -> void:
 		var mark := " ★" if Controls.equipped == id else ""
 		var sub := "%d/%d%s" % [Inv.durability_of(id), Inv.max_dur(id), mark]
 		var bg := Color(0.20, 0.28, 0.22) if Controls.equipped == id else Color(0.18, 0.20, 0.28)
-		var tid := id
-		var tname: String = TOOL_NAMES.get(id, id)
+		var tid: String = str(id)
+		var tname: String = str(TOOL_NAMES.get(id, id))
 		tgrid.add_child(_action_card(tname, sub, bg, func() -> void:
 			if Controls.equipped == tid:
 				Controls.equipped = ""
@@ -304,8 +304,8 @@ func _fill_inv() -> void:
 		any_b = true
 		var mark2 := " ★" if Controls.build_piece == id else ""
 		var bg2 := Color(0.22, 0.24, 0.18) if Controls.build_piece == id else Color(0.18, 0.22, 0.20)
-		var bid := id
-		var bname: String = BUILD_NAMES.get(id, id)
+		var bid: String = str(id)
+		var bname: String = str(BUILD_NAMES.get(id, id))
 		bgrid.add_child(_action_card(bname, "× %d%s" % [c, mark2], bg2, func() -> void:
 			Controls.build_piece = bid
 			Controls.build_mode = true
@@ -324,8 +324,8 @@ func _fill_inv() -> void:
 		if ac <= 0:
 			continue
 		any_a = true
-		var an: String = ARMOR_NAMES.get(id, id)
-		var aid := id
+		var an: String = str(ARMOR_NAMES.get(id, id))
+		var aid: String = str(id)
 		agrid.add_child(_action_card(an, "× %d · DEF %d" % [ac, Inv.defense_of(id)], Color(0.22, 0.18, 0.28), func() -> void:
 			if Inv.equip_armor(aid):
 				_status.text = "Надето: %s" % an
@@ -354,15 +354,15 @@ func _fill_armor() -> void:
 	var sgrid := _grid()
 	_content.add_child(sgrid)
 	for slot_info in ARMOR_SLOTS:
-		var slot: String = slot_info["id"]
-		var title: String = slot_info["title"]
+		var slot: String = str(slot_info["id"])
+		var title: String = str(slot_info["title"])
 		var worn: String = str(Inv.armor.get(slot, ""))
 		var body := "пусто"
 		var bg := Color(0.14, 0.14, 0.16)
 		if worn != "":
 			body = "%s · DEF %d" % [ARMOR_NAMES.get(worn, worn), Inv.defense_of(worn)]
 			bg = Color(0.22, 0.26, 0.34)
-		var sid := slot
+		var sid: String = str(slot)
 		sgrid.add_child(_action_card(title, body, bg, func() -> void:
 			if str(Inv.armor.get(sid, "")) != "":
 				Inv.unequip_armor(sid)
@@ -381,8 +381,8 @@ func _fill_armor() -> void:
 		if c <= 0:
 			continue
 		any = true
-		var nm: String = ARMOR_NAMES.get(id, id)
-		var aid := id
+		var nm: String = str(ARMOR_NAMES.get(id, id))
+		var aid: String = str(id)
 		bag.add_child(_action_card(nm, "× %d · DEF %d · %s" % [c, Inv.defense_of(id), Inv.armor_slot_of(id)], Color(0.22, 0.18, 0.28), func() -> void:
 			if Inv.equip_armor(aid):
 				_status.text = "Надето: %s" % nm
@@ -500,8 +500,8 @@ func _recipe_row(id: String, rec: Dictionary) -> PanelContainer:
 
 	var btn := _btn("Скрафтить", Vector2(150, 46))
 	btn.disabled = not can
-	var craft_id := id
-	var craft_name := str(rec["name"])
+	var craft_id: String = str(id)
+	var craft_name: String = str(rec["name"])
 	btn.pressed.connect(func() -> void:
 		if CraftDBScr.craft(craft_id):
 			if CraftDBScr.is_build_piece(craft_id):

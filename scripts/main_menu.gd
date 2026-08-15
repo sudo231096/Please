@@ -45,13 +45,13 @@ func _ready() -> void:
 
 func _play() -> void:
 	# новый заход — чистый инвентарь
-	Inv.restore({"items": {}, "dur": {}})
+	Inv.restore({"items": {}, "dur": {}, "armor": {}})
 	Controls.equipped = ""
 	Controls.ui_open = false
 	Controls.build_mode = false
 	Controls.build_piece = "wood_block"
 	Controls.build_rotate = 0
-		get_tree().change_scene_to_file("res://scenes/Game3D.tscn")
+	get_tree().change_scene_to_file("res://scenes/Game3D.tscn")
 
 
 func _exit() -> void:
