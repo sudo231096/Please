@@ -1,19 +1,14 @@
 ;
-; Ashveil: Пепел — 3D сюжетная история
+; Empty project
 ;
 config_version=5
 
 [application]
 
-config/name="Ashveil: Пепел"
-run/main_scene="res://scenes/MainMenu.tscn"
+config/name="App"
+run/main_scene="res://scenes/Main.tscn"
 config/features=PackedStringArray("4.7", "GL Compatibility")
 config/icon="res://icon.png"
-
-[autoload]
-
-Story="*res://scripts/story.gd"
-Controls="*res://scripts/controls.gd"
 
 [display]
 
