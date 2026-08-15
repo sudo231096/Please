@@ -1,14 +1,18 @@
 ;
-; Empty project
+; Forest Bandit Run — 2D levels
 ;
 config_version=5
 
 [application]
 
-config/name="App"
-run/main_scene="res://scenes/Main.tscn"
+config/name="Forest Bandit Run"
+run/main_scene="res://scenes/MainMenu.tscn"
 config/features=PackedStringArray("4.7", "GL Compatibility")
 config/icon="res://icon.png"
+
+[autoload]
+
+Progress="*res://scripts/progress.gd"
 
 [display]
 
@@ -22,3 +26,10 @@ window/stretch/aspect="expand"
 renderer/rendering_method="gl_compatibility"
 renderer/rendering_method.mobile="gl_compatibility"
 textures/vram_compression/import_etc2_astc=true
+
+[layer_names]
+
+2d_physics/layer_1="world"
+2d_physics/layer_2="player"
+2d_physics/layer_3="enemy"
+2d_physics/layer_4="player_attack"

@@ -1,0 +1,107 @@
+extends RefCounted
+## Рисуем pixel-art текстуры в коде (Terraria-like).
+
+
+static func tex(w: int, h: int, paint: Callable) -> ImageTexture:
+	var img := Image.create(w, h, false, Image.FORMAT_RGBA8)
+	img.fill(Color(0, 0, 0, 0))
+	paint.call(img)
+	return ImageTexture.create_from_image(img)
+
+
+static func rect(img: Image, x: int, y: int, w: int, h: int, c: Color) -> void:
+	for yy in range(y, y + h):
+		for xx in range(x, x + w):
+			if xx >= 0 and yy >= 0 and xx < img.get_width() and yy < img.get_height():
+				img.set_pixel(xx, yy, c)
+
+
+static func player_tex(facing_right: bool = true) -> ImageTexture:
+	# 16x24 terraria-ish human
+	return tex(16, 24, func(img: Image) -> void:
+		var skin := Color(0.96, 0.76, 0.58)
+		var hair := Color(0.35, 0.2, 0.1)
+		var shirt := Color(0.25, 0.55, 0.85)
+		var pants := Color(0.25, 0.3, 0.55)
+		var boot := Color(0.25, 0.15, 0.1)
+		var eye := Color(0.1, 0.1, 0.1)
+		# head
+		rect(img, 4, 1, 8, 7, skin)
+		rect(img, 3, 2, 10, 5, hair)
+		rect(img, 4, 3, 8, 4, skin)
+		# eyes
+		if facing_right:
+			rect(img, 9, 4, 2, 2, eye)
+		else:
+			rect(img, 5, 4, 2, 2, eye)
+		# body
+		rect(img, 4, 8, 8, 8, shirt)
+		# arms
+		rect(img, 2, 8, 2, 7, skin)
+		rect(img, 12, 8, 2, 7, skin)
+		# legs
+		rect(img, 4, 16, 3, 6, pants)
+		rect(img, 9, 16, 3, 6, pants)
+		# boots
+		rect(img, 3, 21, 4, 3, boot)
+		rect(img, 9, 21, 4, 3, boot)
+	)
+
+
+static func bandit_tex() -> ImageTexture:
+	return tex(16, 24, func(img: Image) -> void:
+		var skin := Color(0.9, 0.7, 0.55)
+		var hood := Color(0.25, 0.15, 0.12)
+		var shirt := Color(0.45, 0.2, 0.15)
+		var pants := Color(0.2, 0.18, 0.15)
+		var boot := Color(0.15, 0.1, 0.08)
+		var mask := Color(0.12, 0.12, 0.12)
+		# hood/head
+		rect(img, 3, 1, 10, 8, hood)
+		rect(img, 4, 3, 8, 5, skin)
+		rect(img, 4, 5, 8, 3, mask)
+		# eyes slit
+		rect(img, 5, 5, 2, 1, Color(0.9, 0.9, 0.2))
+		rect(img, 9, 5, 2, 1, Color(0.9, 0.9, 0.2))
+		# body
+		rect(img, 4, 9, 8, 7, shirt)
+		rect(img, 2, 9, 2, 6, skin)
+		rect(img, 12, 9, 2, 6, skin)
+		# belt
+		rect(img, 4, 15, 8, 1, Color(0.35, 0.25, 0.1))
+		# legs
+		rect(img, 4, 16, 3, 5, pants)
+		rect(img, 9, 16, 3, 5, pants)
+		rect(img, 3, 21, 4, 3, boot)
+		rect(img, 9, 21, 4, 3, boot)
+		# knife
+		rect(img, 13, 11, 2, 5, Color(0.7, 0.7, 0.75))
+	)
+
+
+static func ground_tex() -> ImageTexture:
+	return tex(16, 16, func(img: Image) -> void:
+		rect(img, 0, 0, 16, 16, Color(0.35, 0.25, 0.15))
+		rect(img, 0, 0, 16, 4, Color(0.25, 0.45, 0.18))
+		for i in range(12):
+			var x := randi() % 16
+			var y := 4 + randi() % 12
+			rect(img, x, y, 1, 1, Color(0.3, 0.2, 0.12))
+	)
+
+
+static func grass_tex() -> ImageTexture:
+	return tex(16, 16, func(img: Image) -> void:
+		rect(img, 0, 8, 16, 8, Color(0.28, 0.5, 0.2))
+		rect(img, 0, 0, 16, 8, Color(0.32, 0.55, 0.22))
+		for i in range(10):
+			rect(img, randi() % 16, randi() % 8, 1, 1, Color(0.4, 0.65, 0.25))
+	)
+
+
+static func flag_tex() -> ImageTexture:
+	return tex(16, 24, func(img: Image) -> void:
+		rect(img, 2, 0, 2, 24, Color(0.4, 0.25, 0.1))
+		rect(img, 4, 1, 10, 7, Color(0.2, 0.7, 0.3))
+		rect(img, 5, 2, 3, 3, Color(1, 1, 0.3))
+	)
