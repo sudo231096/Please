@@ -9,7 +9,7 @@ const BUILD_RANGE := 6.0
 const GRID := 1.0
 
 const BuildableScr := preload("res://scripts/buildable.gd")
-const ItemModels := preload("res://scripts/item_models.gd")
+const ItemModelsScr := preload("res://scripts/item_models.gd")
 
 var hp := MAX_HP
 var hp_max := MAX_HP
@@ -23,7 +23,10 @@ var _vm: Node3D
 var _hand: Node3D
 var _tool_root: Node3D
 var _armor_root: Node3D
+var _armor_yaw: Node3D
+var _fps_armor: Node3D
 var _shown_armor := ""
+var _models
 var _vm_base := Vector3(0.35, -0.4, -0.6)
 var _punch := 0.0
 var _bob := 0.0
@@ -39,6 +42,7 @@ var _build_yaw := 0.0
 
 func _ready() -> void:
 	add_to_group("player")
+	_models = ItemModelsScr.new()
 	_cam = $Camera3D
 	_ray = $Camera3D/RayCast3D
 	_ray.target_position = Vector3(0, 0, -BUILD_RANGE)
@@ -60,6 +64,9 @@ func _input(event: InputEvent) -> void:
 
 
 func _physics_process(delta: float) -> void:
+	# модели обновляем всегда (экип из меню)
+	_update_tool_model()
+	_update_armor_model()
 	if Controls.ui_open:
 		if _ghost:
 			_ghost.visible = false
@@ -68,6 +75,8 @@ func _physics_process(delta: float) -> void:
 		_respawn()
 		return
 	_cam.rotation = Vector3(_pitch, _yaw, 0)
+	if _armor_yaw:
+		_armor_yaw.rotation.y = _yaw
 	velocity.y -= GRAV * delta
 
 	var basis := _cam.global_transform.basis
@@ -101,8 +110,6 @@ func _physics_process(delta: float) -> void:
 
 	move_and_slide()
 
-	_update_tool_model()
-	_update_armor_model()
 	_update_build_ghost()
 
 	if Controls.attack_queued:
@@ -493,12 +500,30 @@ func _build_viewmodel() -> void:
 	fist.position = Vector3(0, -0.46, 0.42)
 	_hand.add_child(fist)
 
+	# корень инструмента у кулака, ось модели: +Z вперёд от камеры
 	_tool_root = Node3D.new()
-	_tool_root.position = Vector3(0.02, -0.42, 0.50)
+	_tool_root.position = Vector3(0.05, -0.38, -0.15)
+	_tool_root.rotation = Vector3(-0.15, 0.35, 0.1)
+	_tool_root.scale = Vector3(1.35, 1.35, 1.35)
 	_vm.add_child(_tool_root)
+
+	# FPS-накладки брони на камере
+	_fps_armor = Node3D.new()
+	_fps_armor.name = "FpsArmor"
+	_cam.add_child(_fps_armor)
+
+	# тело-броня крутится с yaw камеры
+	_armor_yaw = Node3D.new()
+	_armor_yaw.name = "ArmorYaw"
+	add_child(_armor_yaw)
+	_armor_root = Node3D.new()
+	_armor_root.name = "ArmorBody"
+	_armor_yaw.add_child(_armor_root)
 
 
 func _update_tool_model() -> void:
+	if _tool_root == null or _models == null:
+		return
 	var eq := Controls.equipped
 	if eq != "" and Inv.count(eq) <= 0:
 		eq = ""
@@ -515,17 +540,12 @@ func _update_tool_model() -> void:
 		_hand.visible = true
 		return
 	_hand.visible = true
-	_spawn_tool_mesh(key)
-
-
-func _spawn_tool_mesh(id: String) -> void:
-	ItemModels.build_tool(_tool_root, id)
-	# наклон «в руках» у камеры
-	_tool_root.rotation = Vector3(0.95, 0.55, -0.25)
-	_tool_root.scale = Vector3(1.15, 1.15, 1.15)
+	_models.build_tool(_tool_root, key)
 
 
 func _update_armor_model() -> void:
+	if _models == null:
+		return
 	var key := "%s|%s|%s|%s" % [
 		str(Inv.armor.get("head", "")),
 		str(Inv.armor.get("chest", "")),
@@ -535,40 +555,54 @@ func _update_armor_model() -> void:
 	if key == _shown_armor and _armor_root != null:
 		return
 	_shown_armor = key
+
 	if _armor_root == null:
-		_armor_root = Node3D.new()
-		_armor_root.name = "ArmorBody"
-		add_child(_armor_root)
-	# clear body armor
+		return
 	while _armor_root.get_child_count() > 0:
 		var c := _armor_root.get_child(0)
 		_armor_root.remove_child(c)
 		c.free()
-	# clear old helm on camera
-	if _cam:
-		var old_h := _cam.get_node_or_null("ArmorHelm")
-		if old_h:
-			_cam.remove_child(old_h)
-			old_h.free()
-	# body pieces (видны если смотреть вниз)
-	for slot in ["chest", "legs", "feet"]:
+	if _fps_armor:
+		while _fps_armor.get_child_count() > 0:
+			var c2 := _fps_armor.get_child(0)
+			_fps_armor.remove_child(c2)
+			c2.free()
+
+	# ноги/ботинки — на теле (видно если смотреть вниз)
+	for slot in ["legs", "feet"]:
 		var pid := str(Inv.armor.get(slot, ""))
 		if pid == "":
 			continue
 		var holder := Node3D.new()
 		holder.name = slot
 		_armor_root.add_child(holder)
-		ItemModels.build_armor_piece(holder, pid)
-	# шлем — на камере, края в FPS
+		_models.build_armor_piece(holder, pid, false)
+
+	# нагрудник — и на теле, и FPS-накладка
+	var chest_id := str(Inv.armor.get("chest", ""))
+	if chest_id != "":
+		var ch := Node3D.new()
+		ch.name = "chest"
+		_armor_root.add_child(ch)
+		_models.build_armor_piece(ch, chest_id, false)
+		if _fps_armor:
+			var chf := Node3D.new()
+			chf.name = "chest_fps"
+			_fps_armor.add_child(chf)
+			_models.build_armor_piece(chf, chest_id, true)
+
+	# шлем — FPS-накладка по краям экрана
 	var helm_id := str(Inv.armor.get("head", ""))
-	if helm_id != "" and _cam:
+	if helm_id != "" and _fps_armor:
 		var hh := Node3D.new()
-		hh.name = "ArmorHelm"
-		_cam.add_child(hh)
-		ItemModels.build_armor_piece(hh, helm_id)
-		# модель шлема строится вокруг y=1.62 мировых; сдвинем в локаль камеры
-		hh.position = Vector3(0, -1.62, 0)
+		hh.name = "helm_fps"
+		_fps_armor.add_child(hh)
+		_models.build_armor_piece(hh, helm_id, true)
 
 
 func _flat(color: Color) -> StandardMaterial3D:
-	return ItemModels.flat(color)
+	if _models:
+		return _models.mat(color)
+	var m := StandardMaterial3D.new()
+	m.albedo_color = color
+	return m
