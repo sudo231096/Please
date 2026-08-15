@@ -1,11 +1,11 @@
 ;
-; Skibidi toilet survival
+; Empty project
 ;
 config_version=5
 
 [application]
 
-config/name="Skibidi toilet survival"
+config/name="App"
 run/main_scene="res://scenes/Main.tscn"
 config/features=PackedStringArray("4.7", "GL Compatibility")
 config/icon="res://icon.png"
