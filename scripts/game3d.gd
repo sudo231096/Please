@@ -18,6 +18,11 @@ const BCOLOR := {
 	Biome.ROCK: Color(0.42, 0.40, 0.38),
 }
 
+const WORLD_SIZE := 6400.0
+const MESH_SIZE := 900.0  # видимый/играбельный рельеф вокруг спавна (оптимизация)
+const MESH_RES := 48
+
+
 var _rng := RandomNumberGenerator.new()
 var _labels := {}
 var _hp_label: Label
@@ -169,7 +174,7 @@ func _build_materials() -> void:
 	_mat_bear = _mat(_animal_tex(Color(0.30, 0.22, 0.16), Color(0.50, 0.38, 0.30), "patches", 14), Vector3(1.2, 1.2, 1.2))
 
 
-func _noise_tex(base: Color, amp: float, seed: int, size := 128) -> ImageTexture:
+func _noise_tex(base: Color, amp: float, seed: int, size := 64) -> ImageTexture:
 	var img := Image.create(size, size, false, Image.FORMAT_RGBA8)
 	var n := FastNoiseLite.new()
 	n.seed = seed
@@ -189,7 +194,7 @@ func _noise_tex(base: Color, amp: float, seed: int, size := 128) -> ImageTexture
 
 
 # Текстура животного с узором: speckle (крап), spots (пятна), streaks (полосы-щетина), patches (подпалины).
-func _animal_tex(base: Color, accent: Color, mode: String, seed: int, size := 96) -> ImageTexture:
+func _animal_tex(base: Color, accent: Color, mode: String, seed: int, size := 48) -> ImageTexture:
 	var img := Image.create(size, size, false, Image.FORMAT_RGBA8)
 	var p := FastNoiseLite.new()
 	p.seed = seed + 50
@@ -231,7 +236,7 @@ func _mat(tex: ImageTexture, scale: Vector3) -> StandardMaterial3D:
 
 func _bark_mat(base: Color, seed: int) -> StandardMaterial3D:
 	# Вертикальные трещины коры + шум
-	var size := 128
+	var size := 64
 	var img := Image.create(size, size, false, Image.FORMAT_RGBA8)
 	var n := FastNoiseLite.new()
 	n.seed = seed
@@ -331,14 +336,11 @@ func _build_env() -> void:
 	env.sky = sky
 	env.ambient_light_source = Environment.AMBIENT_SOURCE_SKY
 	env.ambient_light_energy = 0.55
-	env.tonemap_mode = Environment.TONE_MAPPER_FILMIC
-	env.adjustment_enabled = true
-	env.adjustment_contrast = 1.08
-	env.adjustment_saturation = 1.12
+	env.tonemap_mode = Environment.TONE_MAPPER_LINEAR
+	env.adjustment_enabled = false
 	env.fog_enabled = true
 	env.fog_light_color = Color(0.7, 0.78, 0.85)
-	env.fog_density = 0.00035
-	env.fog_aerial_perspective = 0.4
+	env.fog_density = 0.0012
 	var we := WorldEnvironment.new()
 	we.environment = env
 	add_child(we)
@@ -350,26 +352,71 @@ func _build_env() -> void:
 
 
 func _build_ground() -> void:
-	# Oxide-like: рельефный меш + trimesh-коллизия + вода
+	# Оптимизация: детальный меш только около центра, дальше — плоская подложка
 	var body := StaticBody3D.new()
 	body.name = "Terrain"
 	var mesh_i := MeshInstance3D.new()
-	# ~1000x площадь (200→6400), res пониже ради FPS
-	var am: ArrayMesh = _build_height_mesh(120, 6400.0)
+	var am: ArrayMesh = _build_height_mesh(MESH_RES, MESH_SIZE)
 	mesh_i.mesh = am
 	var gm := StandardMaterial3D.new()
-	gm.albedo_texture = _biome_texture(384)
+	gm.albedo_texture = _biome_texture(192)
 	gm.texture_filter = BaseMaterial3D.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS
 	gm.roughness = 0.95
 	mesh_i.material_override = gm
+	# отсечение далеко
+	mesh_i.visibility_range_end = 420.0
+	mesh_i.visibility_range_fade_mode = GeometryInstance3D.VISIBILITY_RANGE_FADE_DISABLED
 	body.add_child(mesh_i)
+	# коллизия: heightmap shape (быстрее trimesh) или box+сэмпл — heightmap из Image
 	var col := CollisionShape3D.new()
-	# trimesh по рельефу (статичный мир)
-	col.shape = am.create_trimesh_shape()
+	col.shape = _make_heightmap_shape(MESH_RES, MESH_SIZE)
+	var cell := MESH_SIZE / float(MESH_RES)
+	col.scale = Vector3(cell, 1.0, cell)
 	body.add_child(col)
 	add_child(body)
+	# дальняя плоская «бесконечность» (дешёвая)
+	var far_body := StaticBody3D.new()
+	far_body.name = "FarFlat"
+	var far_mi := MeshInstance3D.new()
+	var plane := PlaneMesh.new()
+	plane.size = Vector2(WORLD_SIZE, WORLD_SIZE)
+	var fgm := StandardMaterial3D.new()
+	fgm.albedo_texture = _biome_texture(128)
+	fgm.texture_filter = BaseMaterial3D.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS
+	far_mi.mesh = plane
+	far_mi.material_override = fgm
+	far_mi.position = Vector3(0, -0.05, 0)
+	far_body.add_child(far_mi)
+	var fcol := CollisionShape3D.new()
+	var fbox := BoxShape3D.new()
+	fbox.size = Vector3(WORLD_SIZE, 2.0, WORLD_SIZE)
+	fcol.shape = fbox
+	fcol.position = Vector3(0, -1.05, 0)
+	far_body.add_child(fcol)
+	add_child(far_body)
 	_spawn_water_plane()
 	_spawn_biome_props()
+
+
+func _make_heightmap_shape(res: int, size: float) -> HeightMapShape3D:
+	var hs := HeightMapShape3D.new()
+	hs.map_width = res + 1
+	hs.map_depth = res + 1
+	var half := size * 0.5
+	var step := size / float(res)
+	var data: PackedFloat32Array = PackedFloat32Array()
+	data.resize((res + 1) * (res + 1))
+	var i := 0
+	for iz in range(res + 1):
+		for ix in range(res + 1):
+			var x := -half + float(ix) * step
+			var z := -half + float(iz) * step
+			data[i] = height_at(x, z)
+			i += 1
+	hs.map_data = data
+	# scale shape to world size (Godot heightmap cell = 1 unit by default)
+	# Width/depth in units equals (map_width-1); scale node instead via CollisionShape transform
+	return hs
 
 
 func _build_height_mesh(res: int, size: float) -> ArrayMesh:
@@ -410,15 +457,15 @@ func _build_height_mesh(res: int, size: float) -> ArrayMesh:
 func _spawn_water_plane() -> void:
 	var mi := MeshInstance3D.new()
 	var plane := PlaneMesh.new()
-	plane.size = Vector2(6400.0, 6400.0)
+	plane.size = Vector2(MESH_SIZE * 1.2, MESH_SIZE * 1.2)
 	var wm := StandardMaterial3D.new()
-	wm.albedo_color = Color(0.12, 0.35, 0.55, 0.72)
+	wm.albedo_color = Color(0.12, 0.35, 0.55, 0.65)
 	wm.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
-	wm.roughness = 0.15
-	wm.metallic = 0.2
+	wm.roughness = 0.2
 	mi.mesh = plane
 	mi.material_override = wm
-	mi.position = Vector3(0, -0.15, 0)
+	mi.position = Vector3(0, -0.2, 0)
+	mi.visibility_range_end = 500.0
 	add_child(mi)
 
 
@@ -455,7 +502,7 @@ func _spawn_biome_props() -> void:
 		arm.rotation.z = -1.1
 		n.add_child(arm)
 		add_child(n)
-	for _j in range(140):
+	for _j in range(24):
 		var p2 := _pos_in_biomes([Biome.SNOW])
 		var h2 := height_at(p2.x, p2.z)
 		var t := Node3D.new()
@@ -483,13 +530,15 @@ func _spawn_biome_props() -> void:
 
 
 func _rand_pos() -> Vector3:
-	var x := _rng.randf_range(-2944.0, 2944.0)
-	var z := _rng.randf_range(-2944.0, 2944.0)
+	# спавн объектов в активной зоне (меш), не по всей 6400 — иначе пусто рядом и лаги
+	var half := MESH_SIZE * 0.45
+	var x := _rng.randf_range(-half, half)
+	var z := _rng.randf_range(-half, half)
 	return Vector3(x, height_at(x, z), z)
 
 
 func _pos_in_biomes(allowed: Array) -> Vector3:
-	for _i in range(60):
+	for _i in range(25):
 		var p := _rand_pos()
 		if biome_at(p.x, p.z) in allowed:
 			return p
@@ -497,17 +546,16 @@ func _pos_in_biomes(allowed: Array) -> Vector3:
 
 
 func _build_resources() -> void:
-	# больше объектов под огромную карту (не линейно 1000x — убьёт мобилку)
-	for _i in range(420):
+	for _i in range(70):
 		_spawn_tree(_pos_in_biomes([Biome.FOREST, Biome.PLAINS]))
-	for _i in range(180):
+	for _i in range(36):
 		_spawn_rock(_pos_in_biomes([Biome.PLAINS, Biome.ROCK, Biome.SAND]), "stone")
-	for _i in range(90):
+	for _i in range(20):
 		_spawn_rock(_pos_in_biomes([Biome.ROCK, Biome.SAND, Biome.PLAINS]), "sulfur")
 
 
 func _spawn_animals() -> void:
-	var counts := {AnimalScn.Kind.CHICKEN: 40, AnimalScn.Kind.DEER: 28, AnimalScn.Kind.BOAR: 18, AnimalScn.Kind.BEAR: 10}
+	var counts := {AnimalScn.Kind.CHICKEN: 10, AnimalScn.Kind.DEER: 7, AnimalScn.Kind.BOAR: 5, AnimalScn.Kind.BEAR: 3}
 	var mats := {AnimalScn.Kind.CHICKEN: _mat_chicken, AnimalScn.Kind.DEER: _mat_deer, AnimalScn.Kind.BOAR: _mat_boar, AnimalScn.Kind.BEAR: _mat_bear}
 	for k in counts:
 		for _i in range(counts[k]):
@@ -525,91 +573,38 @@ func _spawn_tree(pos: Vector3) -> void:
 	n.res_type = "wood"
 	n.hp = 3
 	n.position = pos
-	# лёгкая вариация размера/поворота
-	var s := _rng.randf_range(0.85, 1.25)
-	var yaw := _rng.randf() * TAU
-	n.rotation.y = yaw
-
-	# ствол с лёгким наклоном и утолщением у корня
-	var trunk_h := 2.4 * s
+	var s := _rng.randf_range(0.9, 1.2)
+	n.rotation.y = _rng.randf() * TAU
+	var trunk_h := 2.2 * s
 	var trunk := MeshInstance3D.new()
 	var cm := CylinderMesh.new()
-	cm.top_radius = 0.18 * s
-	cm.bottom_radius = 0.38 * s
+	cm.top_radius = 0.16 * s
+	cm.bottom_radius = 0.28 * s
 	cm.height = trunk_h
-	cm.radial_segments = 10
-	cm.material = _mat_wood
+	cm.radial_segments = 6
+	cm.rings = 1
 	trunk.mesh = cm
+	trunk.material_override = _mat_wood
 	trunk.position = Vector3(0, trunk_h * 0.5, 0)
-	trunk.rotation.z = _rng.randf_range(-0.06, 0.06)
-	trunk.rotation.x = _rng.randf_range(-0.05, 0.05)
+	trunk.visibility_range_end = 180.0
 	n.add_child(trunk)
-
-	# корневые наплывы
-	for i in range(3):
-		var a := float(i) * TAU / 3.0 + _rng.randf() * 0.4
-		var root := MeshInstance3D.new()
-		var rm := SphereMesh.new()
-		rm.radius = 0.22 * s
-		rm.height = 0.35 * s
-		rm.radial_segments = 8
-		rm.rings = 4
-		rm.material = _mat_wood
-		root.mesh = rm
-		root.position = Vector3(cos(a) * 0.28 * s, 0.08 * s, sin(a) * 0.28 * s)
-		root.scale = Vector3(1.4, 0.55, 1.1)
-		n.add_child(root)
-
-	# 1–2 ветки
-	var branch_count := 1 + _rng.randi() % 2
-	for i in range(branch_count):
-		var ba := _rng.randf() * TAU
-		var bh := trunk_h * _rng.randf_range(0.45, 0.75)
-		var br := MeshInstance3D.new()
-		var bcm := CylinderMesh.new()
-		var blen := _rng.randf_range(0.6, 1.1) * s
-		bcm.top_radius = 0.04 * s
-		bcm.bottom_radius = 0.09 * s
-		bcm.height = blen
-		bcm.radial_segments = 6
-		bcm.material = _mat_wood
-		br.mesh = bcm
-		br.rotation = Vector3(0.0, -ba, _rng.randf_range(0.7, 1.15))
-		# основание ветки на стволе, длина уходит наружу
-		br.position = Vector3(cos(ba) * 0.2 * s, bh, sin(ba) * 0.2 * s) + Vector3(cos(ba), 0.35, sin(ba)) * (blen * 0.35)
-		n.add_child(br)
-
-	# крона из нескольких пересекающихся сфер (не «леденец»)
-	var crown_y := trunk_h + 0.35 * s
-	var clusters := [
-		Vector3(0, 0, 0),
-		Vector3(0.55 * s, -0.15 * s, 0.25 * s),
-		Vector3(-0.5 * s, -0.1 * s, -0.3 * s),
-		Vector3(0.15 * s, 0.35 * s, -0.45 * s),
-		Vector3(-0.25 * s, 0.2 * s, 0.5 * s),
-		Vector3(0.05 * s, 0.55 * s, 0.05 * s),
-	]
-	for i in range(clusters.size()):
-		var cpos: Vector3 = clusters[i]
-		var fol := MeshInstance3D.new()
-		var sm := SphereMesh.new()
-		var rr := (0.85 if i == 0 else _rng.randf_range(0.55, 0.85)) * s
-		sm.radius = rr
-		sm.height = rr * 1.7
-		sm.radial_segments = 12
-		sm.rings = 8
-		sm.material = _mat_foliage
-		fol.mesh = sm
-		fol.position = Vector3(cpos.x, crown_y + cpos.y, cpos.z)
-		fol.scale = Vector3(_rng.randf_range(0.9, 1.15), _rng.randf_range(0.75, 1.0), _rng.randf_range(0.9, 1.15))
-		n.add_child(fol)
-
+	var fol := MeshInstance3D.new()
+	var sm := SphereMesh.new()
+	sm.radius = 1.0 * s
+	sm.height = 1.8 * s
+	sm.radial_segments = 6
+	sm.rings = 3
+	fol.mesh = sm
+	fol.material_override = _mat_foliage
+	fol.position = Vector3(0, trunk_h + 0.4 * s, 0)
+	fol.visibility_range_end = 180.0
+	n.add_child(fol)
 	var col := CollisionShape3D.new()
 	var cb := CylinderShape3D.new()
-	cb.radius = 0.55 * s
-	cb.height = trunk_h + 1.2 * s
+	cb.radius = 0.45 * s
+	cb.height = trunk_h + 0.8 * s
 	col.shape = cb
-	col.position = Vector3(0, (trunk_h + 1.2 * s) * 0.45, 0)
+	col.position = Vector3(0, (trunk_h + 0.8 * s) * 0.45, 0)
 	n.add_child(col)
 	add_child(n)
 
@@ -622,61 +617,34 @@ func _spawn_rock(pos: Vector3, rtype: String) -> void:
 	n.position = pos
 	n.rotation.y = _rng.randf() * TAU
 	var mat: Material = _mat_stone if rtype == "stone" else _mat_sulfur
-	var s := _rng.randf_range(0.85, 1.25)
-
-	# основная глыба — сплюснутая/скошенная сфера
+	var s := _rng.randf_range(0.9, 1.25)
 	var main := MeshInstance3D.new()
 	var sm := SphereMesh.new()
 	sm.radius = 0.55 * s
 	sm.height = 0.85 * s
-	sm.radial_segments = 12
-	sm.rings = 8
-	sm.material = mat
+	sm.radial_segments = 6
+	sm.rings = 3
 	main.mesh = sm
+	main.material_override = mat
 	main.position = Vector3(0, 0.32 * s, 0)
-	main.scale = Vector3(_rng.randf_range(1.1, 1.5), _rng.randf_range(0.65, 0.95), _rng.randf_range(1.0, 1.4))
-	main.rotation = Vector3(_rng.randf_range(-0.25, 0.25), 0, _rng.randf_range(-0.2, 0.2))
+	main.scale = Vector3(1.3, 0.8, 1.2)
+	main.visibility_range_end = 160.0
 	n.add_child(main)
-
-	# дополнительные обломки
-	var bits := 2 + _rng.randi() % 3
-	for i in range(bits):
-		var a := _rng.randf() * TAU
-		var dist := _rng.randf_range(0.25, 0.55) * s
-		var bit := MeshInstance3D.new()
-		var bsm := SphereMesh.new()
-		var br := _rng.randf_range(0.18, 0.35) * s
-		bsm.radius = br
-		bsm.height = br * _rng.randf_range(1.2, 1.8)
-		bsm.radial_segments = 10
-		bsm.rings = 6
-		bsm.material = mat
-		bit.mesh = bsm
-		bit.position = Vector3(cos(a) * dist, br * 0.45, sin(a) * dist)
-		bit.scale = Vector3(_rng.randf_range(0.8, 1.3), _rng.randf_range(0.5, 0.9), _rng.randf_range(0.8, 1.3))
-		bit.rotation = Vector3(_rng.randf() * 0.8, _rng.randf() * TAU, _rng.randf() * 0.8)
-		n.add_child(bit)
-
-	# у серы — яркие «вкрапления» кристаллов
 	if rtype == "sulfur":
 		var crystal_mat := StandardMaterial3D.new()
 		crystal_mat.albedo_color = Color(0.95, 0.88, 0.25)
-		crystal_mat.roughness = 0.35
-		crystal_mat.metallic = 0.05
-		for i in range(3):
-			var a := _rng.randf() * TAU
-			var cr := MeshInstance3D.new()
-			var prm := PrismMesh.new()
-			prm.size = Vector3(_rng.randf_range(0.12, 0.22) * s, _rng.randf_range(0.25, 0.45) * s, _rng.randf_range(0.12, 0.2) * s)
-			prm.material = crystal_mat
-			cr.mesh = prm
-			cr.position = Vector3(cos(a) * 0.2 * s, 0.35 * s, sin(a) * 0.2 * s)
-			cr.rotation = Vector3(_rng.randf_range(-0.3, 0.3), a, _rng.randf_range(-0.2, 0.2))
-			n.add_child(cr)
-
+		crystal_mat.roughness = 0.4
+		var cr := MeshInstance3D.new()
+		var prm := PrismMesh.new()
+		prm.size = Vector3(0.18 * s, 0.35 * s, 0.16 * s)
+		cr.mesh = prm
+		cr.material_override = crystal_mat
+		cr.position = Vector3(0.1 * s, 0.4 * s, 0)
+		cr.visibility_range_end = 120.0
+		n.add_child(cr)
 	var col := CollisionShape3D.new()
 	var bs := BoxShape3D.new()
-	bs.size = Vector3(1.35 * s, 0.95 * s, 1.35 * s)
+	bs.size = Vector3(1.2 * s, 0.9 * s, 1.2 * s)
 	col.shape = bs
 	col.position = Vector3(0, 0.4 * s, 0)
 	n.add_child(col)
@@ -692,7 +660,7 @@ func _build_player() -> void:
 	add_child(p)
 	_player = p
 	if p.has_node("Camera3D"):
-		p.get_node("Camera3D").far = 2000.0
+		p.get_node("Camera3D").far = 450.0
 		p.get_node("Camera3D").near = 0.08
 
 

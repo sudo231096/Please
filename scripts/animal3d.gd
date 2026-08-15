@@ -24,6 +24,9 @@ var _player
 var _walk_phase := 0.0
 var _legs_arr: Array = []
 var _root: Node3D
+var _ai_tick := 0
+var _sleeping := false
+var _spd_mul := 1.0
 
 
 func _ready() -> void:
@@ -37,38 +40,66 @@ func _ready() -> void:
 
 
 func _physics_process(delta: float) -> void:
+	_ai_tick += 1
+	if is_instance_valid(_player):
+		var dx: float = global_position.x - _player.global_position.x
+		var dz: float = global_position.z - _player.global_position.z
+		var d2: float = dx * dx + dz * dz
+		# дальше 80м — sleep
+		if d2 > 6400.0:
+			if not _sleeping:
+				_sleeping = true
+				velocity = Vector3.ZERO
+				visible = false
+			if (_ai_tick % 30) != 0:
+				return
+			return
+		if _sleeping:
+			_sleeping = false
+			visible = true
+		if (_ai_tick % 3) == 0:
+			_think(d2)
+	elif (_ai_tick % 12) == 0 and _timer <= 0.0:
+		_pick_wander()
+
 	velocity.y -= GRAV * delta
 	if _atk > 0.0:
 		_atk -= delta
 	_timer -= delta
 	var s: Dictionary = STATS[kind]
-	var spd: float = float(s["speed"])
-	if is_instance_valid(_player):
-		var d: float = global_position.distance_to(_player.global_position)
-		var aggr: bool = bool(s["aggr"])
-		if aggr and d < 11.0:
-			_dir = (_player.global_position - global_position)
-			_dir.y = 0.0
-			_dir = _dir.normalized()
-			spd *= 1.4
-			if d < 1.6 and _atk <= 0.0:
-				_player.take_damage(int(s["dmg"]))
-				_atk = 1.0
-		elif not aggr and d < 7.0:
-			_dir = (global_position - _player.global_position)
-			_dir.y = 0.0
-			_dir = _dir.normalized()
-			spd *= 1.3
-		elif _timer <= 0.0:
-			_pick_wander()
-	elif _timer <= 0.0:
-		_pick_wander()
+	var spd: float = float(s["speed"]) * _spd_mul
 	velocity.x = _dir.x * spd
 	velocity.z = _dir.z * spd
 	if _dir.length() > 0.1:
 		rotation.y = atan2(_dir.x, _dir.z)
+	if _sleeping:
+		return
 	move_and_slide()
-	_animate_legs(delta, spd)
+	_animate_legs(delta, float(s["speed"]))
+
+
+func _think(d2: float) -> void:
+	var s: Dictionary = STATS[kind]
+	var d: float = sqrt(d2)
+	var aggr: bool = bool(s["aggr"])
+	_spd_mul = 1.0
+	if aggr and d < 11.0:
+		_dir = (_player.global_position - global_position)
+		_dir.y = 0.0
+		if _dir.length() > 0.01:
+			_dir = _dir.normalized()
+		_spd_mul = 1.4
+		if d < 1.6 and _atk <= 0.0:
+			_player.take_damage(int(s["dmg"]))
+			_atk = 1.0
+	elif (not aggr) and d < 7.0:
+		_dir = (global_position - _player.global_position)
+		_dir.y = 0.0
+		if _dir.length() > 0.01:
+			_dir = _dir.normalized()
+		_spd_mul = 1.3
+	elif _timer <= 0.0:
+		_pick_wander()
 
 
 func _animate_legs(delta: float, base_spd: float) -> void:
