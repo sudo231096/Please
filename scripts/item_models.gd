@@ -93,8 +93,8 @@ static func add_prism(parent: Node3D, size: Vector3, mat: Material, pos: Vector3
 ## ---- Инструменты (viewmodel, ось Y вверх по рукояти) ----
 
 static func build_tool(parent: Node3D, tool_id: String) -> void:
-	var stone_tier := tool_id.begins_with("stone_")
-	var base := tool_id.replace("stone_", "")
+	var stone_tier: bool = tool_id.begins_with("stone_")
+	var base: String = tool_id.replace("stone_", "")
 	var wood := wood_mat(stone_tier)
 	var metal := metal_mat(stone_tier)
 	var wrap := leather_mat()
@@ -139,9 +139,10 @@ static func _tool_pickaxe(p: Node3D, wood: Material, metal: Material, wrap: Mate
 	# головка
 	add_box(p, Vector3(0.10, 0.08, 0.08), metal, Vector3(0, 0.48, 0))
 	# левый/правый шип
-	for s in [-1.0, 1.0]:
-		add_box(p, Vector3(0.16, 0.05, 0.05), metal, Vector3(s * 0.12, 0.48, 0), Vector3(0, 0, s * 0.15))
-		add_prism(p, Vector3(0.06, 0.12, 0.05), metal, Vector3(s * 0.24, 0.48, 0), Vector3(0, 0, s * 1.2))
+	for si2 in range(2):
+		var s2: float = -1.0 if si2 == 0 else 1.0
+		add_box(p, Vector3(0.16, 0.05, 0.05), metal, Vector3(s2 * 0.12, 0.48, 0), Vector3(0, 0, s2 * 0.15))
+		add_prism(p, Vector3(0.06, 0.12, 0.05), metal, Vector3(s2 * 0.24, 0.48, 0), Vector3(0, 0, s2 * 1.2))
 
 
 static func _tool_axe(p: Node3D, wood: Material, metal: Material, wrap: Material) -> void:
@@ -179,10 +180,10 @@ static func _tool_bow(p: Node3D, wood: Material, wrap: Material, dark: Material)
 	add_box(p, Vector3(0.04, 0.14, 0.05), wrap, Vector3(0, 0.12, 0))
 	# плечи — дуга из сегментов
 	for i in range(5):
-		var t := (float(i) - 2.0) / 2.0  # -1..1
-		var y := 0.12 + t * 0.32
-		var x := absf(t) * 0.12
-		var z := -0.02 - absf(t) * 0.02
+		var t: float = (float(i) - 2.0) / 2.0  # -1..1
+		var y: float = 0.12 + float(t) * 0.32
+		var x: float = absf(float(t)) * 0.12
+		var z: float = -0.02 - absf(float(t)) * 0.02
 		add_cyl(p, 0.014, 0.018, 0.12, wood, Vector3(x * 0.15, y, z), Vector3(0, 0, t * 0.55))
 		add_cyl(p, 0.014, 0.018, 0.12, wood, Vector3(-x * 0.15, y, z), Vector3(0, 0, -t * 0.55))
 	# концы
@@ -220,13 +221,13 @@ static func _tool_crossbow(p: Node3D, wood: Material, metal: Material, wrap: Mat
 ## ---- Броня (на теле игрока, Y вверх, ноги у 0) ----
 
 static func build_armor_piece(parent: Node3D, piece_id: String) -> void:
-	var mat := armor_mat(piece_id)
-	var trim := flat(Color(0.15, 0.12, 0.10), 0.9)
+	var mat: Material = armor_mat(piece_id)
+	var trim: Material = flat(Color(0.15, 0.12, 0.10), 0.9)
 	if piece_id.begins_with("bone_"):
 		trim = flat(Color(0.55, 0.5, 0.4), 0.8)
 	elif piece_id.begins_with("stone_"):
 		trim = flat(Color(0.3, 0.3, 0.32), 0.7)
-	var slot := ""
+	var slot: String = ""
 	if piece_id.ends_with("helm"):
 		slot = "head"
 	elif piece_id.ends_with("chest"):
@@ -248,7 +249,7 @@ static func build_armor_piece(parent: Node3D, piece_id: String) -> void:
 
 static func _armor_helm(p: Node3D, mat: Material, trim: Material, id: String) -> void:
 	# камера на y=1.6 — открытый шлем (лицо свободно для FPS)
-	var y := 1.62
+	var y: float = 1.62
 	# купол
 	add_sphere(p, 0.23, mat, Vector3(0, y + 0.08, -0.02), Vector3(1.1, 0.85, 1.05))
 	# задняя пластина
@@ -268,7 +269,7 @@ static func _armor_helm(p: Node3D, mat: Material, trim: Material, id: String) ->
 
 
 static func _armor_chest(p: Node3D, mat: Material, trim: Material, id: String) -> void:
-	var y := 1.15
+	var y: float = 1.15
 	# торс
 	add_box(p, Vector3(0.55, 0.55, 0.32), mat, Vector3(0, y, 0.02))
 	# плечи
@@ -289,7 +290,7 @@ static func _armor_chest(p: Node3D, mat: Material, trim: Material, id: String) -
 
 static func _armor_legs(p: Node3D, mat: Material, trim: Material) -> void:
 	# поножи / штаны
-	var y := 0.55
+	var y: float = 0.55
 	add_box(p, Vector3(0.48, 0.22, 0.28), mat, Vector3(0, y + 0.25, 0))  # пояс/бёдра
 	add_box(p, Vector3(0.50, 0.05, 0.30), trim, Vector3(0, y + 0.34, 0))
 	# ноги
@@ -301,8 +302,9 @@ static func _armor_legs(p: Node3D, mat: Material, trim: Material) -> void:
 
 
 static func _armor_boots(p: Node3D, mat: Material, trim: Material) -> void:
-	for s in [-1.0, 1.0]:
-		var x := s * 0.12
+	for si in range(2):
+		var s: float = -1.0 if si == 0 else 1.0
+		var x: float = s * 0.12
 		# голенище
 		add_cyl(p, 0.09, 0.10, 0.22, mat, Vector3(x, 0.18, 0.02))
 		# стопа
