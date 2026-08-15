@@ -121,14 +121,15 @@ func build_tool(parent: Node3D, tool_id: String) -> void:
 
 
 func _sword(p: Node3D, w: Material, m: Material, wrap: Material) -> void:
-	# рукоять вдоль -Z (к камере/руке), клинок в +Z (вперёд)
-	cyl(p, 0.03, 0.034, 0.18, w, Vector3(0, 0, 0.02), Vector3(PI * 0.5, 0, 0))
-	cyl(p, 0.036, 0.036, 0.06, wrap, Vector3(0, 0, 0.02), Vector3(PI * 0.5, 0, 0))
-	ball(p, 0.045, m, Vector3(0, 0, 0.12), Vector3(1.0, 1.0, 0.8))
-	box(p, Vector3(0.24, 0.045, 0.05), m, Vector3(0, 0, -0.08))
-	box(p, Vector3(0.06, 0.025, 0.48), m, Vector3(0, 0, -0.34))
-	box(p, Vector3(0.02, 0.03, 0.46), mat(Color(0.9, 0.92, 0.95), 0.3), Vector3(0, 0.01, -0.34))
-	prism(p, Vector3(0.06, 0.10, 0.025), m, Vector3(0, 0, -0.62), Vector3(PI * 0.5, 0, 0))
+	# Меч СТОЙМЯ: рукоять внизу у кулака, клинок вверх (+Y)
+	# лёгкий наклон вперёд к центру экрана
+	cyl(p, 0.028, 0.032, 0.16, w, Vector3(0, 0.06, 0.0))  # рукоять
+	cyl(p, 0.034, 0.034, 0.05, wrap, Vector3(0, 0.06, 0.0))  # обмотка
+	ball(p, 0.04, m, Vector3(0, -0.04, 0.0), Vector3(1.0, 0.75, 1.0))  # навершие
+	box(p, Vector3(0.22, 0.04, 0.05), m, Vector3(0, 0.15, 0.0))  # гарда
+	box(p, Vector3(0.055, 0.48, 0.02), m, Vector3(0, 0.42, 0.0))  # клинок вверх
+	box(p, Vector3(0.018, 0.46, 0.024), mat(Color(0.9, 0.92, 0.95), 0.3), Vector3(0, 0.42, 0.0))
+	prism(p, Vector3(0.055, 0.10, 0.02), m, Vector3(0, 0.70, 0.0))  # остриё вверх
 
 
 func _pickaxe(p: Node3D, w: Material, m: Material, wrap: Material) -> void:

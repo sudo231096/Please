@@ -48,6 +48,7 @@ func _ready() -> void:
 	_ray.target_position = Vector3(0, 0, -BUILD_RANGE)
 	_ray.collision_mask = 1  # world + static
 	_build_viewmodel()
+	_build_body_model()
 	_build_ghost()
 	_update_armor_model()
 
@@ -462,6 +463,69 @@ func _animate(delta: float) -> void:
 		_vm.rotation.x = 0.0
 
 
+
+func _build_body_model() -> void:
+	# Простое тело Oxide-style (видно при взгляде вниз)
+	if _armor_yaw == null:
+		_armor_yaw = Node3D.new()
+		_armor_yaw.name = "ArmorYaw"
+		add_child(_armor_yaw)
+	var body := Node3D.new()
+	body.name = "PlayerBody"
+	_armor_yaw.add_child(body)
+	var skin := _flat(Color(0.92, 0.72, 0.55))
+	var cloth := _flat(Color(0.25, 0.35, 0.28))
+	var pants := _flat(Color(0.22, 0.22, 0.28))
+	var boot := _flat(Color(0.18, 0.12, 0.08))
+	# торс
+	var torso := MeshInstance3D.new()
+	var tb := BoxMesh.new()
+	tb.size = Vector3(0.55, 0.65, 0.32)
+	torso.mesh = tb
+	torso.material_override = cloth
+	torso.position = Vector3(0, 1.15, 0)
+	body.add_child(torso)
+	# голова (под камерой, почти не видна)
+	var head := MeshInstance3D.new()
+	var hs := SphereMesh.new()
+	hs.radius = 0.18
+	hs.height = 0.36
+	head.mesh = hs
+	head.material_override = skin
+	head.position = Vector3(0, 1.62, 0)
+	body.add_child(head)
+	# ноги
+	for sx in [-0.14, 0.14]:
+		var leg := MeshInstance3D.new()
+		var lc := CylinderMesh.new()
+		lc.top_radius = 0.09
+		lc.bottom_radius = 0.10
+		lc.height = 0.7
+		leg.mesh = lc
+		leg.material_override = pants
+		leg.position = Vector3(sx, 0.45, 0)
+		body.add_child(leg)
+		var ft := MeshInstance3D.new()
+		var fb := BoxMesh.new()
+		fb.size = Vector3(0.14, 0.1, 0.26)
+		ft.mesh = fb
+		ft.material_override = boot
+		ft.position = Vector3(sx, 0.06, 0.05)
+		body.add_child(ft)
+	# руки
+	for sx2 in [-0.38, 0.38]:
+		var arm := MeshInstance3D.new()
+		var ac := CylinderMesh.new()
+		ac.top_radius = 0.07
+		ac.bottom_radius = 0.08
+		ac.height = 0.55
+		arm.mesh = ac
+		arm.material_override = cloth
+		arm.position = Vector3(sx2, 1.15, 0)
+		arm.rotation.z = 0.15 if sx2 < 0 else -0.15
+		body.add_child(arm)
+
+
 func _build_viewmodel() -> void:
 	_vm = Node3D.new()
 	_vm.position = _vm_base
@@ -502,9 +566,10 @@ func _build_viewmodel() -> void:
 
 	# корень инструмента у кулака, ось модели: +Z вперёд от камеры
 	_tool_root = Node3D.new()
-	_tool_root.position = Vector3(0.05, -0.38, -0.15)
-	_tool_root.rotation = Vector3(-0.15, 0.35, 0.1)
-	_tool_root.scale = Vector3(1.35, 1.35, 1.35)
+	# кулак справа внизу; меч стоит вверх
+	_tool_root.position = Vector3(0.08, -0.32, -0.28)
+	_tool_root.rotation = Vector3(-0.35, 0.15, 0.25)
+	_tool_root.scale = Vector3(1.25, 1.25, 1.25)
 	_vm.add_child(_tool_root)
 
 	# FPS-накладки брони на камере
@@ -513,12 +578,14 @@ func _build_viewmodel() -> void:
 	_cam.add_child(_fps_armor)
 
 	# тело-броня крутится с yaw камеры
-	_armor_yaw = Node3D.new()
-	_armor_yaw.name = "ArmorYaw"
-	add_child(_armor_yaw)
-	_armor_root = Node3D.new()
-	_armor_root.name = "ArmorBody"
-	_armor_yaw.add_child(_armor_root)
+	if _armor_yaw == null:
+		_armor_yaw = Node3D.new()
+		_armor_yaw.name = "ArmorYaw"
+		add_child(_armor_yaw)
+	if _armor_root == null:
+		_armor_root = Node3D.new()
+		_armor_root.name = "ArmorBody"
+		_armor_yaw.add_child(_armor_root)
 
 
 func _update_tool_model() -> void:
