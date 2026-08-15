@@ -43,6 +43,8 @@ var _build_yaw := 0.0
 
 func _ready() -> void:
 	add_to_group("player")
+	floor_snap_length = 0.4
+	floor_max_angle = deg_to_rad(55.0)
 	_models = ItemModelsScr.new()
 	_cam = $Camera3D
 	# не рисовать слой 2 (торс/голова/руки тела) — только ноги при взгляде вниз
@@ -576,9 +578,10 @@ func _build_body_model() -> void:
 	var body := Node3D.new()
 	body.name = "PlayerBody"
 	_armor_yaw.add_child(body)
-	var model := AssetLib.spawn_model(AssetLib.player_path(), body, Vector3(1.0, 1.0, 1.0), Vector3(0, PI, 0), Vector3(0, 0, 0))
+	var model := AssetLib.spawn_model(AssetLib.player_path(), body, Vector3(1.0, 1.0, 1.0), Vector3(0, PI, 0), Vector3(0, 0, 0), 1.8)
 	if model:
 		_set_layers_recursive(model, 2)
+	# ноги для вида вниз (модель на layer2)
 	_add_visible_legs(body)
 
 
@@ -705,23 +708,20 @@ func _update_tool_model() -> void:
 	var path := AssetLib.weapon_path(key)
 	var asset_n: Node3D = null
 	if path != "":
-		asset_n = AssetLib.spawn_model(path, _tool_root)
+		asset_n = AssetLib.spawn_model(path, _tool_root, Vector3.ONE, Vector3.ZERO, Vector3.ZERO, 0.9)
 	if asset_n:
 		var base := key.replace("stone_", "")
 		if base == "sword":
 			asset_n.rotation = Vector3(-0.15, 1.0, 1.45)
 			asset_n.position = Vector3(0.0, 0.05, 0.0)
-			asset_n.scale = Vector3(1.35, 1.35, 1.35)
+			asset_n.scale *= Vector3(1.15, 1.15, 1.15)
 		elif base == "bow" or base == "crossbow":
 			asset_n.rotation = Vector3(0.2, 1.1, 0.15)
 			asset_n.position = Vector3(0.0, 0.08, -0.05)
-			asset_n.scale = Vector3(1.2, 1.2, 1.2)
 		elif base == "rod":
 			asset_n.rotation = Vector3(0.9, 0.4, -0.2)
-			asset_n.scale = Vector3(1.15, 1.15, 1.15)
 		else:
 			asset_n.rotation = Vector3(0.7, 0.6, -0.25)
-			asset_n.scale = Vector3(1.25, 1.25, 1.25)
 	else:
 		_models.build_tool(_tool_root, key)
 

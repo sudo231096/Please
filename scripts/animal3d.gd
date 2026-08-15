@@ -153,30 +153,30 @@ func _build(s: Dictionary) -> void:
 		Kind.BEAR:
 			kind_name = "BEAR"
 	var path := AssetLib.animal_path(kind_name)
-	var mdl := AssetLib.spawn_model(path, _root)
+	var target_h := 1.0
+	match kind:
+		Kind.CHICKEN:
+			target_h = 0.55
+		Kind.DEER:
+			target_h = 1.35
+		Kind.BOAR:
+			target_h = 0.95
+		Kind.BEAR:
+			target_h = 1.7
+	var mdl := AssetLib.spawn_model(path, _root, Vector3.ONE, Vector3.ZERO, Vector3.ZERO, target_h)
 	if mdl:
-		# normalize size roughly
-		var sc := sz
+		# поставить на землю
+		var hnow := AssetLib._approx_height(mdl)
+		mdl.position = Vector3(0, 0.0, 0)
 		match kind:
-			Kind.CHICKEN:
-				sc = 0.45
-				mdl.scale = Vector3(sc, sc, sc)
-				mdl.position = Vector3(0, 0.05, 0)
-			Kind.DEER:
-				sc = 0.9
-				mdl.scale = Vector3(sc, sc, sc)
-				mdl.position = Vector3(0, 0.0, 0)
 			Kind.BOAR:
-				sc = 0.75
-				mdl.scale = Vector3(sc * 1.1, sc * 0.85, sc * 1.15)
-				mdl.position = Vector3(0, 0.05, 0)
-				# darker tint
-				_tint_meshes(mdl, Color(0.45, 0.35, 0.28))
+				_tint_meshes(mdl, Color(0.4, 0.3, 0.24))
+				mdl.scale *= Vector3(1.15, 0.9, 1.2)
 			Kind.BEAR:
-				sc = 1.15
-				mdl.scale = Vector3(sc * 1.25, sc * 1.1, sc * 1.3)
-				mdl.position = Vector3(0, 0.0, 0)
-				_tint_meshes(mdl, Color(0.25, 0.18, 0.12))
+				_tint_meshes(mdl, Color(0.22, 0.15, 0.1))
+				mdl.scale *= Vector3(1.2, 1.05, 1.25)
+			Kind.CHICKEN:
+				_tint_meshes(mdl, Color(0.92, 0.88, 0.8))
 	else:
 		# minimal fallback box animal
 		var mi := MeshInstance3D.new()
@@ -191,9 +191,10 @@ func _build(s: Dictionary) -> void:
 	# simple animated leg stubs optional skip for asset models
 	var col := CollisionShape3D.new()
 	var bs := BoxShape3D.new()
-	bs.size = Vector3(sz * 1.2, sz * 1.4, sz * 1.8)
+	var ch := target_h
+	bs.size = Vector3(ch * 0.9, ch, ch * 1.3)
 	col.shape = bs
-	col.position = Vector3(0, sz * 0.7, 0)
+	col.position = Vector3(0, ch * 0.5, 0)
 	add_child(col)
 
 

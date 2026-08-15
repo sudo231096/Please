@@ -368,12 +368,21 @@ func _build_ground() -> void:
 	mesh_i.visibility_range_fade_mode = GeometryInstance3D.VISIBILITY_RANGE_FADE_DISABLED
 	body.add_child(mesh_i)
 	# коллизия: heightmap shape (быстрее trimesh) или box+сэмпл — heightmap из Image
+	# trimesh по тому же мешу (heightmap scale в Godot давал провалы)
 	var col := CollisionShape3D.new()
-	col.shape = _make_heightmap_shape(MESH_RES, MESH_SIZE)
-	var cell := MESH_SIZE / float(MESH_RES)
-	col.scale = Vector3(cell, 1.0, cell)
+	col.shape = am.create_trimesh_shape()
 	body.add_child(col)
 	add_child(body)
+	# страховочный пол (если trimesh вдруг даст сбой — не улетим в void)
+	var safe := StaticBody3D.new()
+	safe.name = "SafetyFloor"
+	var sc := CollisionShape3D.new()
+	var sb := BoxShape3D.new()
+	sb.size = Vector3(MESH_SIZE * 1.2, 2.0, MESH_SIZE * 1.2)
+	sc.shape = sb
+	sc.position = Vector3(0, -4.0, 0)
+	safe.add_child(sc)
+	add_child(safe)
 	# дальняя плоская «бесконечность» (дешёвая)
 	var far_body := StaticBody3D.new()
 	far_body.name = "FarFlat"
@@ -387,12 +396,8 @@ func _build_ground() -> void:
 	far_mi.material_override = fgm
 	far_mi.position = Vector3(0, -0.05, 0)
 	far_body.add_child(far_mi)
-	var fcol := CollisionShape3D.new()
-	var fbox := BoxShape3D.new()
-	fbox.size = Vector3(WORLD_SIZE, 2.0, WORLD_SIZE)
-	fcol.shape = fbox
-	fcol.position = Vector3(0, -1.05, 0)
-	far_body.add_child(fcol)
+	# без коллизии на дальней плоскости — только фон (коллизия = детальный меш)
+	far_mi.position = Vector3(0, -2.0, 0)
 	add_child(far_body)
 	_spawn_water_plane()
 	_spawn_biome_props()
@@ -545,6 +550,19 @@ func _pos_in_biomes(allowed: Array) -> Vector3:
 	return _rand_pos()
 
 
+func _find_spawn() -> Vector3:
+	# ищем сушу недалеко от 0,0
+	for r in [40.0, 80.0, 140.0, 220.0]:
+		for _i in range(40):
+			var a := _rng.randf() * TAU
+			var x := cos(a) * _rng.randf_range(0.0, r)
+			var z := sin(a) * _rng.randf_range(0.0, r)
+			var b: int = biome_at(x, z)
+			if b != Biome.WATER and b != Biome.ROCK:
+				return Vector3(x, height_at(x, z), z)
+	return Vector3(0, height_at(0, 0), 0)
+
+
 func _build_resources() -> void:
 	for _i in range(70):
 		_spawn_tree(_pos_in_biomes([Biome.FOREST, Biome.PLAINS]))
@@ -574,7 +592,7 @@ func _spawn_tree(pos: Vector3) -> void:
 	n.hp = 3
 	n.position = pos
 	n.rotation.y = _rng.randf() * TAU
-	var s := _rng.randf_range(0.9, 1.35)
+	var s := _rng.randf_range(2.2, 3.4)
 	var path := AssetLib.tree_path(_rng.randi())
 	var holder := Node3D.new()
 	n.add_child(holder)
@@ -607,7 +625,7 @@ func _spawn_rock(pos: Vector3, rtype: String) -> void:
 	n.hp = 3 if rtype == "stone" else 2
 	n.position = pos
 	n.rotation.y = _rng.randf() * TAU
-	var s := _rng.randf_range(0.85, 1.4)
+	var s := _rng.randf_range(1.6, 2.6)
 	var path := AssetLib.rock_path(_rng.randi())
 	var holder := Node3D.new()
 	n.add_child(holder)
@@ -645,10 +663,9 @@ func _spawn_rock(pos: Vector3, rtype: String) -> void:
 
 
 func _build_player() -> void:
-
 	var p := Player3DScn.instantiate()
-	var sp := _pos_in_biomes([Biome.PLAINS, Biome.FOREST])
-	var hy := height_at(sp.x, sp.z) + 2.0
+	var sp := _find_spawn()
+	var hy := height_at(sp.x, sp.z) + 2.5
 	p.position = Vector3(sp.x, hy, sp.z)
 	p.spawn_pos = p.position
 	add_child(p)

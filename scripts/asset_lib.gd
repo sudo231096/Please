@@ -39,16 +39,72 @@ func instantiate_scene(path: String) -> Node3D:
 	return node
 
 
-func spawn_model(path: String, parent: Node, scale: Vector3 = Vector3.ONE, rot: Vector3 = Vector3.ZERO, pos: Vector3 = Vector3.ZERO) -> Node3D:
+func spawn_model(path: String, parent: Node, scale: Vector3 = Vector3.ONE, rot: Vector3 = Vector3.ZERO, pos: Vector3 = Vector3.ZERO, normalize_height: float = 0.0) -> Node3D:
 	var n := instantiate_scene(path)
 	if n == null:
 		return null
+	# нормализуем ДО add_child по локальным мешам (global_transform ещё кривой)
+	if normalize_height > 0.0:
+		var h := _approx_height_local(n)
+		if h > 0.001:
+			var k := normalize_height / h
+			n.scale = Vector3(k, k, k) * scale
+		else:
+			n.scale = scale
+	else:
+		n.scale = scale
 	parent.add_child(n)
 	n.position = pos
 	n.rotation = rot
-	n.scale = scale
+	# прижать низ модели к y=0 родителя
+	if normalize_height > 0.0:
+		var bmin := _approx_min_y_local(n)
+		n.position.y = pos.y - bmin
 	_prepare_visual(n)
 	return n
+
+
+func _approx_height_local(n: Node) -> float:
+	var a := _merged_local_aabb(n)
+	if a.size == Vector3.ZERO:
+		return 1.0
+	return maxf(a.size.y, 0.001)
+
+
+func _approx_min_y_local(n: Node) -> float:
+	var a := _merged_local_aabb(n)
+	return a.position.y
+
+
+func _approx_height(n: Node) -> float:
+	return _approx_height_local(n)
+
+
+func _merged_local_aabb(root: Node) -> AABB:
+	var first := true
+	var out := AABB()
+	var stack: Array = [[root, Transform3D.IDENTITY]]
+	while not stack.is_empty():
+		var item = stack.pop_back()
+		var node: Node = item[0]
+		var xf: Transform3D = item[1]
+		var local_xf := xf
+		if node is Node3D and node != root:
+			local_xf = xf * (node as Node3D).transform
+		elif node is Node3D and node == root:
+			local_xf = Transform3D.IDENTITY
+		if node is VisualInstance3D:
+			var a: AABB = (node as VisualInstance3D).get_aabb()
+			for i in range(8):
+				var p: Vector3 = local_xf * a.get_endpoint(i)
+				if first:
+					out = AABB(p, Vector3.ZERO)
+					first = false
+				else:
+					out = out.expand(p)
+		for c in node.get_children():
+			stack.append([c, local_xf if node is Node3D else xf])
+	return out
 
 
 func _prepare_visual(n: Node) -> void:
