@@ -1,220 +1,174 @@
-extends CharacterBody2D
+extends CharacterBody3D
+## Камерамен — игрок.
 
-const PixelArt = preload("res://scripts/pixel.gd")
-## 2D human like Terraria.
+const SPEED := 6.0
+const MAX_HP := 100
+const FIRE_CD := 0.35
+const DAMAGE := 34.0
 
-const SPEED := 210.0
-const JUMP_V := -390.0
-const GRAV := 1100.0
-const ATTACK_TIME := 0.22
-
-var max_hp := 100
-var hp := 100
-var damage := 34
-var shield := 0
-var alive := true
-var facing := 1
-var _attack_t := 0.0
+var hp := MAX_HP
+var _fire_t := 0.0
 var _invuln := 0.0
-var _sprite: Sprite2D
-var _tex := {}
-var _attack_box: Area2D
-var _attack_shape: CollisionShape2D
-var _jump_held := false
-var _anim_t := 0.0
-var _walk := 0
 
 signal died
-signal hp_changed(hp: int, max_hp: int)
-signal attacked
+signal hp_changed(hp: float, max_hp: float)
+
+const BulletScr := preload("res://scripts/bullet.gd")
 
 
 func _ready() -> void:
 	add_to_group("player")
 	collision_layer = 2
 	collision_mask = 1
-	floor_snap_length = 6.0
-	# баффы от скинов и прокачки
-	max_hp = Progress.player_max_hp()
-	hp = max_hp
-	damage = Progress.player_damage()
-	shield = Progress.shield_hits()
 	_build()
+	hp = MAX_HP
+
+
+func _box(size: Vector3, pos: Vector3, color: Color) -> MeshInstance3D:
+	var m := MeshInstance3D.new()
+	var bm := BoxMesh.new()
+	bm.size = size
+	m.mesh = bm
+	var mat := StandardMaterial3D.new()
+	mat.albedo_color = color
+	mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	m.material_override = mat
+	m.position = pos
+	add_child(m)
+	return m
 
 
 func _build() -> void:
-	var col := CollisionShape2D.new()
-	var cs := RectangleShape2D.new()
-	cs.size = Vector2(14, 22)
+	var col := CollisionShape3D.new()
+	var cs := CapsuleShape3D.new()
+	cs.radius = 0.35
+	cs.height = 1.7
 	col.shape = cs
-	col.position = Vector2(0, -11)
+	col.position = Vector3(0, 0.85, 0)
 	add_child(col)
 
-	_tex[0] = PixelArt.player_tex(0)
-	_tex[1] = PixelArt.player_tex(1)
-	_tex[2] = PixelArt.player_tex(2)
-	_tex[3] = PixelArt.player_tex(3)
+	var navy := Color(0.16, 0.2, 0.32)
+	# ноги
+	_box(Vector3(0.24, 0.5, 0.24), Vector3(-0.18, 0.5, 0), Color(0.1, 0.1, 0.14))
+	_box(Vector3(0.24, 0.5, 0.24), Vector3(0.18, 0.5, 0), Color(0.1, 0.1, 0.14))
+	# торс
+	_box(Vector3(0.7, 0.9, 0.45), Vector3(0, 1.05, 0), navy)
+	# руки
+	_box(Vector3(0.2, 0.6, 0.2), Vector3(-0.5, 1.05, 0), navy)
+	_box(Vector3(0.2, 0.6, 0.2), Vector3(0.5, 1.05, 0), navy)
+	# шея
+	_box(Vector3(0.16, 0.2, 0.16), Vector3(0, 1.55, 0), Color(0.93, 0.78, 0.62))
+	# голова-камера
+	_box(Vector3(0.55, 0.55, 0.55), Vector3(0, 1.85, 0), Color(0.2, 0.22, 0.26))
+	# объектив (вперёд, -Z)
+	var lens := _cyl(0.13, 0.16, Color(0.05, 0.05, 0.08))
+	lens.position = Vector3(0, 1.85, -0.3)
+	lens.rotation_degrees = Vector3(-90, 0, 0)
+	# красная лампочка записи
+	_box(Vector3(0.08, 0.08, 0.08), Vector3(0, 2.14, 0), Color(1.0, 0.2, 0.2))
 
-	_sprite = Sprite2D.new()
-	_sprite.texture = _tex[0]
-	_sprite.centered = true
-	_sprite.position = Vector2(0, -12)
-	_sprite.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
-	_sprite.scale = Vector2(2, 2)
-	add_child(_sprite)
 
-	_attack_box = Area2D.new()
-	_attack_box.collision_layer = 8
-	_attack_box.collision_mask = 4
-	_attack_box.monitoring = false
-	_attack_box.monitorable = false
-	add_child(_attack_box)
-	_attack_shape = CollisionShape2D.new()
-	var ash := RectangleShape2D.new()
-	ash.size = Vector2(22, 16)
-	_attack_shape.shape = ash
-	_attack_shape.position = Vector2(16, -12)
-	_attack_box.add_child(_attack_shape)
-	_attack_box.body_entered.connect(_on_hit_enemy)
-
-	# меч (визуал)
-	var sword := ColorRect.new()
-	sword.name = "SwordVis"
-	sword.size = Vector2(18, 4)
-	sword.position = Vector2(8, -16)
-	sword.color = Color(0.75, 0.75, 0.8)
-	sword.visible = false
-	add_child(sword)
+func _cyl(r: float, h: float, color: Color) -> MeshInstance3D:
+	var m := MeshInstance3D.new()
+	var cm := CylinderMesh.new()
+	cm.top_radius = r
+	cm.bottom_radius = r
+	cm.height = h
+	m.mesh = cm
+	var mat := StandardMaterial3D.new()
+	mat.albedo_color = color
+	mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	m.material_override = mat
+	add_child(m)
+	return m
 
 
 func _physics_process(delta: float) -> void:
-	if not alive:
+	_fire_t = maxf(0.0, _fire_t - delta)
+	_invuln = maxf(0.0, _invuln - delta)
+	if hp <= 0.0:
 		return
-	if _invuln > 0.0:
-		_invuln -= delta
-		_sprite.modulate.a = 0.45 if fmod(_invuln * 20.0, 2.0) < 1.0 else 1.0
-	else:
-		_sprite.modulate.a = 1.0
 
-	if not is_on_floor():
-		velocity.y += GRAV * delta
-	else:
-		if velocity.y > 0.0:
-			velocity.y = 0.0
+	var dir := Vector2.ZERO
+	if Input.is_physical_key_pressed(KEY_W) or Input.is_physical_key_pressed(KEY_UP):
+		dir.y -= 1.0
+	if Input.is_physical_key_pressed(KEY_S) or Input.is_physical_key_pressed(KEY_DOWN):
+		dir.y += 1.0
+	if Input.is_physical_key_pressed(KEY_A) or Input.is_physical_key_pressed(KEY_LEFT):
+		dir.x -= 1.0
+	if Input.is_physical_key_pressed(KEY_D) or Input.is_physical_key_pressed(KEY_RIGHT):
+		dir.x += 1.0
+	if has_meta("mob_dir"):
+		dir += get_meta("mob_dir")
+	if dir.length() > 1.0:
+		dir = dir.normalized()
 
-	var dir := 0.0
-	if Input.is_action_pressed("ui_left") or Input.is_physical_key_pressed(KEY_A) or Input.is_physical_key_pressed(KEY_LEFT):
-		dir -= 1.0
-	if Input.is_action_pressed("ui_right") or Input.is_physical_key_pressed(KEY_D) or Input.is_physical_key_pressed(KEY_RIGHT):
-		dir += 1.0
-	if has_meta("mob_left") and bool(get_meta("mob_left")):
-		dir -= 1.0
-	if has_meta("mob_right") and bool(get_meta("mob_right")):
-		dir += 1.0
+	velocity.x = dir.x * SPEED
+	velocity.z = dir.y * SPEED
 
-	velocity.x = dir * SPEED
-	if dir != 0.0:
-		facing = 1 if dir > 0.0 else -1
-		_sprite.flip_h = facing < 0
-		_attack_shape.position.x = 16.0 * facing
-		var sv = get_node_or_null("SwordVis")
-		if sv:
-			sv.position.x = (8 if facing > 0 else -26)
+	# прицел: ближайший враг, иначе — направление движения
+	var target := _nearest_enemy()
+	if target:
+		var look_p: Vector3 = target.global_position
+		look_p.y = global_position.y
+		if global_position.distance_to(look_p) > 0.05:
+			look_at(look_p, Vector3.UP)
+	elif dir.length() > 0.05:
+		look_at(global_position + Vector3(dir.x, 0, dir.y), Vector3.UP)
 
-	# анимация
-	_update_animation(delta)
-
-	var jump_down := Input.is_physical_key_pressed(KEY_SPACE) or Input.is_physical_key_pressed(KEY_W) or Input.is_physical_key_pressed(KEY_UP) or Input.is_action_pressed("ui_accept")
-	var jump_pressed := jump_down and not _jump_held
-	_jump_held = jump_down
-	if has_meta("mob_jump") and bool(get_meta("mob_jump")):
-		jump_pressed = true
-		set_meta("mob_jump", false)
-	if jump_pressed and is_on_floor():
-		velocity.y = JUMP_V
-
-	var attack_pressed := Input.is_physical_key_pressed(KEY_J) or Input.is_physical_key_pressed(KEY_K) or Input.is_physical_key_pressed(KEY_ENTER) or Input.is_mouse_button_pressed(MOUSE_BUTTON_LEFT)
-	if has_meta("mob_attack") and bool(get_meta("mob_attack")):
-		attack_pressed = true
-		set_meta("mob_attack", false)
-	if attack_pressed and _attack_t <= 0.0:
-		_start_attack()
-
-	if _attack_t > 0.0:
-		_attack_t -= delta
-		if _attack_t <= 0.0:
-			_attack_box.monitoring = false
-			var sv2 = get_node_or_null("SwordVis")
-			if sv2:
-				sv2.visible = false
+	# стрельба
+	var fire := Input.is_physical_key_pressed(KEY_SPACE) or Input.is_physical_key_pressed(KEY_J) or Input.is_mouse_button_pressed(MOUSE_BUTTON_LEFT)
+	if has_meta("mob_fire") and bool(get_meta("mob_fire")):
+		fire = true
+	if fire and _fire_t <= 0.0:
+		_fire()
 
 	move_and_slide()
 
 
-func _update_animation(delta: float) -> void:
-	_anim_t += delta
-	if _attack_t > 0.0:
-		_set_pose(3)
-		return
-	if absf(velocity.x) > 10.0 and is_on_floor():
-		if _anim_t > 0.12:
-			_anim_t = 0.0
-			_walk = 1 - _walk
-		_set_pose(1 + _walk)
+func _nearest_enemy() -> Node3D:
+	var best: Node3D = null
+	var best_d := 1.0e9
+	for e in get_tree().get_nodes_in_group("enemies"):
+		var en := e as Node3D
+		var d: float = en.global_position.distance_squared_to(global_position)
+		if d < best_d:
+			best_d = d
+			best = en
+	return best
+
+
+func _fire() -> void:
+	_fire_t = FIRE_CD
+	var dir3 := Vector3(0, 0, -1)
+	var t := _nearest_enemy()
+	if t:
+		dir3 = t.global_position - global_position
+		dir3.y = 0.0
+		if dir3.length() > 0.01:
+			dir3 = dir3.normalized()
+		else:
+			dir3 = -global_transform.basis.z
+			dir3.y = 0.0
+			dir3 = dir3.normalized()
 	else:
-		_set_pose(0)
+		dir3 = -global_transform.basis.z
+		dir3.y = 0.0
+		dir3 = dir3.normalized()
+
+	var b := Area3D.new()
+	b.set_script(BulletScr)
+	var spawn := global_position + Vector3(0, 1.85, 0) + dir3 * 0.7
+	get_tree().current_scene.add_child(b)
+	b.global_position = spawn
+	b.dir = dir3
 
 
-func _set_pose(p: int) -> void:
-	if _sprite.texture != _tex[p]:
-		_sprite.texture = _tex[p]
-
-
-func _start_attack() -> void:
-	_attack_t = ATTACK_TIME
-	_attack_box.monitoring = true
-	var sv = get_node_or_null("SwordVis")
-	if sv:
-		sv.visible = true
-	attacked.emit()
-
-
-func _on_hit_enemy(body: Node2D) -> void:
-	if body and body.has_method("take_damage"):
-		body.take_damage(damage, self)
-
-
-func take_damage(amount: int, from: Node = null, knock: float = 220.0) -> void:
-	if not alive or _invuln > 0.0:
+func take_damage(amount: float, from: Node = null, knock: float = 0.0) -> void:
+	if hp <= 0.0 or _invuln > 0.0:
 		return
-	# щит (скин 1) поглощает удар
-	if shield > 0:
-		shield -= 1
-		_invuln = 0.5
-		_sprite.modulate = Color(0.5, 0.8, 1.0)
-		get_tree().create_timer(0.15).timeout.connect(func() -> void:
-			if is_instance_valid(_sprite):
-				_sprite.modulate = Color.WHITE
-		)
-		hp_changed.emit(hp, max_hp)
-		if from and from is Node2D:
-			var push := global_position.x - (from as Node2D).global_position.x
-			velocity.x = knock * 0.6 * signf(push if push != 0.0 else 1.0)
-		return
-	hp = maxi(0, hp - amount)
-	_invuln = 0.8
-	hp_changed.emit(hp, max_hp)
-	if from and from is Node2D:
-		var push := global_position.x - (from as Node2D).global_position.x
-		velocity.x = knock * signf(push if push != 0.0 else 1.0)
-		velocity.y = -absf(knock) * 0.8
-	if hp <= 0:
-		alive = false
+	hp = maxf(0.0, hp - amount)
+	_invuln = 0.4
+	hp_changed.emit(hp, MAX_HP)
+	if hp <= 0.0:
 		died.emit()
-
-
-func heal_full() -> void:
-	hp = max_hp
-	alive = true
-	_invuln = 0.0
-	hp_changed.emit(hp, max_hp)
