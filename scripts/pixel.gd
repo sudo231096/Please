@@ -107,6 +107,60 @@ static func bandit_tex(pose: int = 0) -> ImageTexture:
 	)
 
 
+# --- БОСС (гигантский разбойник) ---
+# pose: 0 = idle, 1 = walk A, 2 = walk B, 3 = attack
+static func boss_tex(pose: int = 0) -> ImageTexture:
+	return tex(24, 36, func(img: Image) -> void:
+		var skin := Color(0.85, 0.65, 0.5)
+		var hood := Color(0.45, 0.12, 0.1)
+		var shirt := Color(0.3, 0.16, 0.14)
+		var armor := Color(0.52, 0.52, 0.58)
+		var pants := Color(0.18, 0.16, 0.14)
+		var boot := Color(0.12, 0.08, 0.06)
+		var mask := Color(0.1, 0.1, 0.1)
+		var eye := Color(0.95, 0.3, 0.15)
+		# капюшон + голова
+		rect(img, 5, 2, 14, 12, hood)
+		rect(img, 6, 4, 12, 8, skin)
+		rect(img, 6, 7, 12, 5, mask)
+		rect(img, 7, 7, 3, 2, eye)
+		rect(img, 14, 7, 3, 2, eye)
+		# шипы/корона
+		rect(img, 4, 0, 3, 3, Color(0.7, 0.6, 0.2))
+		rect(img, 10, 0, 3, 3, Color(0.7, 0.6, 0.2))
+		rect(img, 17, 0, 3, 3, Color(0.7, 0.6, 0.2))
+		# тело + броня
+		rect(img, 5, 14, 14, 12, shirt)
+		rect(img, 5, 14, 14, 3, armor)
+		rect(img, 3, 14, 2, 10, armor)
+		rect(img, 19, 14, 2, 10, armor)
+		# руки
+		rect(img, 3, 14, 2, 9, skin)
+		if pose == 3:
+			rect(img, 19, 6, 2, 8, skin)
+			rect(img, 20, 4, 3, 5, Color(0.7, 0.7, 0.75))
+		else:
+			rect(img, 19, 14, 2, 9, skin)
+			rect(img, 20, 17, 3, 6, Color(0.7, 0.7, 0.75))
+		# ноги
+		if pose == 1:
+			rect(img, 5, 26, 5, 5, pants)
+			rect(img, 4, 31, 6, 3, boot)
+			rect(img, 13, 26, 5, 8, pants)
+			rect(img, 13, 33, 6, 3, boot)
+		elif pose == 2:
+			rect(img, 5, 26, 5, 8, pants)
+			rect(img, 4, 33, 6, 3, boot)
+			rect(img, 13, 26, 5, 5, pants)
+			rect(img, 13, 31, 6, 3, boot)
+		else:
+			rect(img, 5, 26, 5, 8, pants)
+			rect(img, 4, 33, 6, 3, boot)
+			rect(img, 13, 26, 5, 8, pants)
+			rect(img, 13, 33, 6, 3, boot)
+	)
+
+
 # --- МОНЕТА ---
 static func coin_tex(big: bool = false) -> ImageTexture:
 	var s := 12 if big else 8

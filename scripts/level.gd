@@ -3,13 +3,16 @@ extends Node2D
 
 const PlayerScr := preload("res://scripts/player.gd")
 const BanditScr := preload("res://scripts/bandit.gd")
+const BossScr := preload("res://scripts/boss.gd")
 const PixelArt = preload("res://scripts/pixel.gd")
 
 var level_num := 1
 var _player: CharacterBody2D
+var _boss: CharacterBody2D
 var _hp_l: Label
 var _lvl_l: Label
 var _coin_l: Label
+var _boss_l: Label
 var _msg_l: Label
 var _camera: Camera2D
 var _won := false
@@ -184,6 +187,9 @@ func _spawn_player() -> void:
 
 
 func _spawn_enemies() -> void:
+	if level_num == 20:
+		_spawn_boss()
+		return
 	var base := 2 + int(level_num / 10.0)
 	var count := mini(2 + base + int(level_num % 7), 18)
 	for i in range(count):
@@ -195,6 +201,28 @@ func _spawn_enemies() -> void:
 		if e.has_method("setup_patrol"):
 			e.setup_patrol(x, 160.0 + float(level_num % 5) * 10.0, _diff)
 		e.died.connect(_on_enemy_died)
+
+
+func _spawn_boss() -> void:
+	_boss = CharacterBody2D.new()
+	_boss.set_script(BossScr)
+	_boss.position = Vector2(_map_w * 0.6, _ground_y - 60)
+	add_child(_boss)
+	_boss.died.connect(_on_boss_died)
+
+
+func _on_boss_died(pos: Vector2) -> void:
+	# босс — щедрая награда
+	_spawn_coin(pos, 100, true)
+	for i in range(6):
+		_spawn_coin(pos + Vector2(_rng.randf_range(-44, 44), _rng.randf_range(-20, 6)), 5, false)
+	if _boss_l:
+		_boss_l.visible = false
+
+
+func _on_boss_hp(v: int, mx: int) -> void:
+	if _boss_l:
+		_boss_l.text = "БОСС  HP %d / %d" % [v, mx]
 
 
 func _on_enemy_died(pos: Vector2) -> void:
@@ -289,6 +317,21 @@ func _build_hud() -> void:
 	_coin_l.text = "Монеты: %d" % Progress.coins
 	root.add_child(_coin_l)
 	Progress.coins_changed.connect(_on_coins)
+
+	_boss_l = Label.new()
+	_boss_l.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_boss_l.anchor_left = 0.3
+	_boss_l.anchor_right = 0.7
+	_boss_l.offset_top = 12
+	_boss_l.offset_bottom = 56
+	_boss_l.add_theme_font_size_override("font_size", 30)
+	_boss_l.modulate = Color(1.0, 0.4, 0.3)
+	_boss_l.visible = false
+	root.add_child(_boss_l)
+	if _boss:
+		_boss.hp_changed.connect(_on_boss_hp)
+		_boss_l.visible = true
+		_on_boss_hp(_boss.hp, _boss.max_hp)
 
 	_msg_l = Label.new()
 	_msg_l.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER

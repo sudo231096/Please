@@ -184,7 +184,7 @@ func _on_hit_enemy(body: Node2D) -> void:
 		body.take_damage(damage, self)
 
 
-func take_damage(amount: int, from: Node = null) -> void:
+func take_damage(amount: int, from: Node = null, knock: float = 220.0) -> void:
 	if not alive or _invuln > 0.0:
 		return
 	# щит (скин 1) поглощает удар
@@ -197,14 +197,17 @@ func take_damage(amount: int, from: Node = null) -> void:
 				_sprite.modulate = Color.WHITE
 		)
 		hp_changed.emit(hp, max_hp)
+		if from and from is Node2D:
+			var push := global_position.x - (from as Node2D).global_position.x
+			velocity.x = knock * 0.6 * signf(push if push != 0.0 else 1.0)
 		return
 	hp = maxi(0, hp - amount)
 	_invuln = 0.8
 	hp_changed.emit(hp, max_hp)
 	if from and from is Node2D:
 		var push := global_position.x - (from as Node2D).global_position.x
-		velocity.x = 220.0 * signf(push if push != 0.0 else 1.0)
-		velocity.y = -180.0
+		velocity.x = knock * signf(push if push != 0.0 else 1.0)
+		velocity.y = -absf(knock) * 0.8
 	if hp <= 0:
 		alive = false
 		died.emit()
