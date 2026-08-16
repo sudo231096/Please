@@ -16,8 +16,9 @@ static func rect(img: Image, x: int, y: int, w: int, h: int, c: Color) -> void:
 				img.set_pixel(xx, yy, c)
 
 
-static func player_tex(facing_right: bool = true) -> ImageTexture:
-	# 16x24 terraria-ish human
+# --- ИГРОК ---
+# pose: 0 = idle, 1 = walk A, 2 = walk B, 3 = attack (рука вверх)
+static func player_tex(pose: int = 0) -> ImageTexture:
 	return tex(16, 24, func(img: Image) -> void:
 		var skin := Color(0.96, 0.76, 0.58)
 		var hair := Color(0.35, 0.2, 0.1)
@@ -25,30 +26,43 @@ static func player_tex(facing_right: bool = true) -> ImageTexture:
 		var pants := Color(0.25, 0.3, 0.55)
 		var boot := Color(0.25, 0.15, 0.1)
 		var eye := Color(0.1, 0.1, 0.1)
-		# head
+		# голова
 		rect(img, 4, 1, 8, 7, skin)
 		rect(img, 3, 2, 10, 5, hair)
 		rect(img, 4, 3, 8, 4, skin)
-		# eyes
-		if facing_right:
-			rect(img, 9, 4, 2, 2, eye)
-		else:
-			rect(img, 5, 4, 2, 2, eye)
-		# body
+		rect(img, 9, 4, 2, 2, eye)  # взгляд вправо
+		# тело
 		rect(img, 4, 8, 8, 8, shirt)
-		# arms
-		rect(img, 2, 8, 2, 7, skin)
-		rect(img, 12, 8, 2, 7, skin)
-		# legs
-		rect(img, 4, 16, 3, 6, pants)
-		rect(img, 9, 16, 3, 6, pants)
-		# boots
-		rect(img, 3, 21, 4, 3, boot)
-		rect(img, 9, 21, 4, 3, boot)
+		# руки
+		rect(img, 2, 8, 2, 7, skin)  # левая
+		if pose == 3:
+			rect(img, 12, 3, 2, 5, skin)  # правая поднята (замах)
+		else:
+			rect(img, 12, 8, 2, 7, skin)
+		# ноги
+		if pose == 1:
+			# шаг A: левая нога приподнята
+			rect(img, 4, 16, 3, 4, pants)
+			rect(img, 3, 20, 4, 2, boot)
+			rect(img, 9, 16, 3, 6, pants)
+			rect(img, 9, 21, 4, 3, boot)
+		elif pose == 2:
+			# шаг B: правая нога приподнята
+			rect(img, 4, 16, 3, 6, pants)
+			rect(img, 3, 21, 4, 3, boot)
+			rect(img, 9, 16, 3, 4, pants)
+			rect(img, 9, 20, 4, 2, boot)
+		else:
+			rect(img, 4, 16, 3, 6, pants)
+			rect(img, 9, 16, 3, 6, pants)
+			rect(img, 3, 21, 4, 3, boot)
+			rect(img, 9, 21, 4, 3, boot)
 	)
 
 
-static func bandit_tex() -> ImageTexture:
+# --- РАЗБОЙНИК ---
+# pose: 0 = idle, 1 = walk A, 2 = walk B, 3 = attack (нож вперёд)
+static func bandit_tex(pose: int = 0) -> ImageTexture:
 	return tex(16, 24, func(img: Image) -> void:
 		var skin := Color(0.9, 0.7, 0.55)
 		var hood := Color(0.25, 0.15, 0.12)
@@ -56,26 +70,57 @@ static func bandit_tex() -> ImageTexture:
 		var pants := Color(0.2, 0.18, 0.15)
 		var boot := Color(0.15, 0.1, 0.08)
 		var mask := Color(0.12, 0.12, 0.12)
-		# hood/head
+		# капюшон / голова
 		rect(img, 3, 1, 10, 8, hood)
 		rect(img, 4, 3, 8, 5, skin)
 		rect(img, 4, 5, 8, 3, mask)
-		# eyes slit
 		rect(img, 5, 5, 2, 1, Color(0.9, 0.9, 0.2))
 		rect(img, 9, 5, 2, 1, Color(0.9, 0.9, 0.2))
-		# body
+		# тело
 		rect(img, 4, 9, 8, 7, shirt)
+		# руки
 		rect(img, 2, 9, 2, 6, skin)
-		rect(img, 12, 9, 2, 6, skin)
-		# belt
+		if pose == 3:
+			rect(img, 12, 7, 2, 5, skin)  # рука с ножом поднята
+			rect(img, 13, 5, 2, 4, Color(0.7, 0.7, 0.75))  # нож вверх
+		else:
+			rect(img, 12, 9, 2, 6, skin)
+			rect(img, 13, 11, 2, 5, Color(0.7, 0.7, 0.75))  # нож
+		# пояс
 		rect(img, 4, 15, 8, 1, Color(0.35, 0.25, 0.1))
-		# legs
-		rect(img, 4, 16, 3, 5, pants)
-		rect(img, 9, 16, 3, 5, pants)
-		rect(img, 3, 21, 4, 3, boot)
-		rect(img, 9, 21, 4, 3, boot)
-		# knife
-		rect(img, 13, 11, 2, 5, Color(0.7, 0.7, 0.75))
+		# ноги
+		if pose == 1:
+			rect(img, 4, 16, 3, 3, pants)
+			rect(img, 3, 19, 4, 2, boot)
+			rect(img, 9, 16, 3, 5, pants)
+			rect(img, 9, 21, 4, 3, boot)
+		elif pose == 2:
+			rect(img, 4, 16, 3, 5, pants)
+			rect(img, 3, 21, 4, 3, boot)
+			rect(img, 9, 16, 3, 3, pants)
+			rect(img, 9, 19, 4, 2, boot)
+		else:
+			rect(img, 4, 16, 3, 5, pants)
+			rect(img, 9, 16, 3, 5, pants)
+			rect(img, 3, 21, 4, 3, boot)
+			rect(img, 9, 21, 4, 3, boot)
+	)
+
+
+# --- МОНЕТА ---
+static func coin_tex(big: bool = false) -> ImageTexture:
+	var s := 12 if big else 8
+	return tex(s, s, func(img: Image) -> void:
+		var gold := Color(1.0, 0.8, 0.15)
+		var dark := Color(0.8, 0.55, 0.05)
+		var light := Color(1.0, 0.95, 0.6)
+		var c := float(s) * 0.5
+		for yy in range(s):
+			for xx in range(s):
+				var d := Vector2(xx, yy).distance_to(Vector2(c - 0.5, c - 0.5))
+				if d <= c:
+					img.set_pixel(xx, yy, gold if d < c - 1.0 else dark)
+		rect(img, int(c) - 2, int(c) - 3, 3, 3, light)
 	)
 
 

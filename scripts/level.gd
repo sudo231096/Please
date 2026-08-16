@@ -9,18 +9,21 @@ var level_num := 1
 var _player: CharacterBody2D
 var _hp_l: Label
 var _lvl_l: Label
+var _coin_l: Label
 var _msg_l: Label
 var _camera: Camera2D
 var _won := false
 var _rng := RandomNumberGenerator.new()
 var _map_w := 3200.0
 var _ground_y := 520.0
+var _diff := 1.0
 
 
 func _ready() -> void:
 	level_num = Progress.current
 	_rng.seed = 1000 + level_num * 97
 	_map_w = 2600.0 + float(level_num % 40) * 20.0
+	_diff = 1.0 + float(level_num) * 0.03
 	_build_background()
 	_build_terrain()
 	_spawn_player()
@@ -190,7 +193,32 @@ func _spawn_enemies() -> void:
 		e.position = Vector2(x, _ground_y - 40)
 		add_child(e)
 		if e.has_method("setup_patrol"):
-			e.setup_patrol(x, 160.0 + float(level_num % 5) * 10.0)
+			e.setup_patrol(x, 160.0 + float(level_num % 5) * 10.0, _diff)
+		e.died.connect(_on_enemy_died)
+
+
+func _on_enemy_died(pos: Vector2) -> void:
+	# 1% шанс — джекпот 50 монет, иначе 2–3 монеты
+	var roll := _rng.randf()
+	var total := 0
+	if roll < 0.01:
+		total = 50
+	else:
+		total = _rng.randi_range(2, 3)
+	if total >= 50:
+		_spawn_coin(pos, 50, true)
+	else:
+		for i in range(total):
+			_spawn_coin(pos + Vector2(_rng.randf_range(-22, 22), _rng.randf_range(-12, 4)), 1, false)
+
+
+func _spawn_coin(pos: Vector2, value: int, big: bool) -> void:
+	var c := Area2D.new()
+	c.set_script(preload("res://scripts/coin.gd"))
+	c.position = pos
+	c.value = value
+	c.big = big
+	add_child(c)
 
 
 func _spawn_flag() -> void:
@@ -244,12 +272,23 @@ func _build_hud() -> void:
 	_hp_l = Label.new()
 	_hp_l.offset_left = 16
 	_hp_l.offset_top = 48
-	_hp_l.offset_right = 300
+	_hp_l.offset_right = 400
 	_hp_l.offset_bottom = 90
 	_hp_l.add_theme_font_size_override("font_size", 24)
 	_hp_l.modulate = Color(0.4, 1.0, 0.5)
 	root.add_child(_hp_l)
-	_on_hp(_player.hp)
+	_on_hp(_player.hp, _player.max_hp)
+
+	_coin_l = Label.new()
+	_coin_l.offset_left = 16
+	_coin_l.offset_top = 84
+	_coin_l.offset_right = 400
+	_coin_l.offset_bottom = 124
+	_coin_l.add_theme_font_size_override("font_size", 24)
+	_coin_l.modulate = Color(1.0, 0.85, 0.3)
+	_coin_l.text = "Монеты: %d" % Progress.coins
+	root.add_child(_coin_l)
+	Progress.coins_changed.connect(_on_coins)
 
 	_msg_l = Label.new()
 	_msg_l.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
@@ -298,10 +337,10 @@ func _build_mobile_ui() -> void:
 	root.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	layer.add_child(root)
 
-	var left := _mbtn("◀", Vector2(20, -160), Vector2(90, 90))
-	var right := _mbtn("▶", Vector2(120, -160), Vector2(90, 90))
-	var jump := _mbtn("⬆", Vector2(-220, -160), Vector2(100, 90), true)
-	var atk := _mbtn("⚔", Vector2(-110, -160), Vector2(100, 90), true)
+	var left := _mbtn("◀", Vector2(20, -250), Vector2(200, 200))
+	var right := _mbtn("▶", Vector2(240, -250), Vector2(200, 200))
+	var jump := _mbtn("⬆", Vector2(-460, -250), Vector2(220, 200), true)
+	var atk := _mbtn("⚔", Vector2(-230, -250), Vector2(220, 200), true)
 	root.add_child(left)
 	root.add_child(right)
 	root.add_child(jump)
@@ -319,7 +358,7 @@ func _mbtn(text: String, pos: Vector2, size: Vector2, from_right: bool = false) 
 	b.text = text
 	b.focus_mode = Control.FOCUS_NONE
 	b.custom_minimum_size = size
-	b.add_theme_font_size_override("font_size", 30)
+	b.add_theme_font_size_override("font_size", 44)
 	b.anchor_top = 1.0
 	b.anchor_bottom = 1.0
 	if from_right:
@@ -332,10 +371,18 @@ func _mbtn(text: String, pos: Vector2, size: Vector2, from_right: bool = false) 
 	return b
 
 
-func _on_hp(v: int) -> void:
+func _on_hp(v: int, mx: int) -> void:
 	if _hp_l:
-		_hp_l.text = "HP %d/%d" % [v, 100]
+		var shield_txt := ""
+		if _player and _player.shield > 0:
+			shield_txt = "  ·  Щит %d" % _player.shield
+		_hp_l.text = "HP %d/%d%s" % [v, mx, shield_txt]
 		_hp_l.modulate = Color(0.4, 1.0, 0.5) if v > 30 else Color(1.0, 0.35, 0.3)
+
+
+func _on_coins() -> void:
+	if _coin_l:
+		_coin_l.text = "Монеты: %d" % Progress.coins
 
 
 func _on_player_died() -> void:
