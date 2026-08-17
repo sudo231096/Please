@@ -6,8 +6,10 @@ const JoystickScr := preload("res://scripts/joystick.gd")
 var _player: Node3D
 var _hp_fill: ColorRect
 var _score_l: Label
-var _wave_l: Label
+var _level_l: Label
 var _high_l: Label
+var _flash_l: Label
+var _flash_t := 0.0
 var _over: Control
 var _over_score: Label
 
@@ -42,14 +44,26 @@ func _build() -> void:
 	_score_l.modulate = Color(1.0, 0.9, 0.4)
 	add_child(_score_l)
 
-	_wave_l = Label.new()
-	_wave_l.offset_left = 20
-	_wave_l.offset_top = 94
-	_wave_l.offset_right = 400
-	_wave_l.offset_bottom = 126
-	_wave_l.add_theme_font_size_override("font_size", 22)
-	_wave_l.modulate = Color(1.0, 0.5, 0.4)
-	add_child(_wave_l)
+	_level_l = Label.new()
+	_level_l.offset_left = 20
+	_level_l.offset_top = 94
+	_level_l.offset_right = 400
+	_level_l.offset_bottom = 126
+	_level_l.add_theme_font_size_override("font_size", 22)
+	_level_l.modulate = Color(1.0, 0.5, 0.4)
+	add_child(_level_l)
+
+	# вспышка при смене уровня
+	_flash_l = Label.new()
+	_flash_l.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_flash_l.anchor_left = 0.15
+	_flash_l.anchor_right = 0.85
+	_flash_l.anchor_top = 0.28
+	_flash_l.anchor_bottom = 0.42
+	_flash_l.add_theme_font_size_override("font_size", 56)
+	_flash_l.modulate = Color(1.0, 0.85, 0.3)
+	_flash_l.visible = false
+	add_child(_flash_l)
 
 	_high_l = Label.new()
 	_high_l.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
@@ -150,8 +164,16 @@ func _build() -> void:
 	_over.add_child(restart)
 
 	update_score()
-	set_wave(1)
+	set_level(1)
 	_hp(100, 100)
+
+
+func _process(delta: float) -> void:
+	if _flash_t > 0.0:
+		_flash_t -= delta
+		_flash_l.modulate.a = minf(1.0, _flash_t * 2.0)
+		if _flash_t <= 0.0:
+			_flash_l.visible = false
 
 
 func _on_joy(dir: Vector2) -> void:
@@ -171,9 +193,17 @@ func update_score() -> void:
 		_high_l.text = "Рекорд: %d" % GameState.high_score
 
 
-func set_wave(w: int) -> void:
-	if _wave_l:
-		_wave_l.text = "Волна %d" % w
+func set_level(lvl: int) -> void:
+	if _level_l:
+		_level_l.text = "Уровень %d" % lvl
+
+
+func flash_level(lvl: int) -> void:
+	if _flash_l:
+		_flash_l.text = "УРОВЕНЬ %d" % lvl
+		_flash_l.visible = true
+		_flash_l.modulate.a = 1.0
+		_flash_t = 1.5
 
 
 func _hp(v: float, mx: float) -> void:

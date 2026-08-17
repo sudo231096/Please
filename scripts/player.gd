@@ -1,10 +1,12 @@
 extends CharacterBody3D
-## Камерамен — игрок.
+## Камерамен — бежит вперёд по улице, стрейфится и стреляет.
 
-const SPEED := 6.0
+const RUN_SPEED := 6.0
+const STRAFE_SPEED := 6.0
 const MAX_HP := 100
 const FIRE_CD := 0.35
 const DAMAGE := 34.0
+const STREET_HALF := 4.6
 
 var hp := MAX_HP
 var _fire_t := 0.0
@@ -89,32 +91,32 @@ func _physics_process(delta: float) -> void:
 	if hp <= 0.0:
 		return
 
-	var dir := Vector2.ZERO
-	if Input.is_physical_key_pressed(KEY_W) or Input.is_physical_key_pressed(KEY_UP):
-		dir.y -= 1.0
-	if Input.is_physical_key_pressed(KEY_S) or Input.is_physical_key_pressed(KEY_DOWN):
-		dir.y += 1.0
+	# стрейф влево/вправо
+	var strafe := 0.0
 	if Input.is_physical_key_pressed(KEY_A) or Input.is_physical_key_pressed(KEY_LEFT):
-		dir.x -= 1.0
+		strafe -= 1.0
 	if Input.is_physical_key_pressed(KEY_D) or Input.is_physical_key_pressed(KEY_RIGHT):
-		dir.x += 1.0
+		strafe += 1.0
 	if has_meta("mob_dir"):
-		dir += get_meta("mob_dir")
-	if dir.length() > 1.0:
-		dir = dir.normalized()
+		var jd: Vector2 = get_meta("mob_dir")
+		strafe += jd.x
 
-	velocity.x = dir.x * SPEED
-	velocity.z = dir.y * SPEED
+	# авто-бег вперёд (-Z)
+	velocity.z = -RUN_SPEED
+	velocity.x = strafe * STRAFE_SPEED
 
-	# прицел: ближайший враг, иначе — направление движения
+	# не выходим за улицу
+	global_position.x = clampf(global_position.x, -STREET_HALF, STREET_HALF)
+
+	# прицел: ближайший враг, иначе — вперёд
 	var target := _nearest_enemy()
 	if target:
 		var look_p: Vector3 = target.global_position
 		look_p.y = global_position.y
 		if global_position.distance_to(look_p) > 0.05:
 			look_at(look_p, Vector3.UP)
-	elif dir.length() > 0.05:
-		look_at(global_position + Vector3(dir.x, 0, dir.y), Vector3.UP)
+	else:
+		look_at(global_position + Vector3(0, 0, -1), Vector3.UP)
 
 	# стрельба
 	var fire := Input.is_physical_key_pressed(KEY_SPACE) or Input.is_physical_key_pressed(KEY_J) or Input.is_mouse_button_pressed(MOUSE_BUTTON_LEFT)
@@ -148,13 +150,9 @@ func _fire() -> void:
 		if dir3.length() > 0.01:
 			dir3 = dir3.normalized()
 		else:
-			dir3 = -global_transform.basis.z
-			dir3.y = 0.0
-			dir3 = dir3.normalized()
+			dir3 = Vector3(0, 0, -1)
 	else:
-		dir3 = -global_transform.basis.z
-		dir3.y = 0.0
-		dir3 = dir3.normalized()
+		dir3 = Vector3(0, 0, -1)
 
 	var b := Area3D.new()
 	b.set_script(BulletScr)

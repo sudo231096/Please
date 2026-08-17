@@ -149,6 +149,11 @@ func _physics_process(delta: float) -> void:
 	_head.position.y = 0.95 + sin(_t * 8.0) * 0.06
 	_saw.rotate_z(delta * 26.0)
 
+	# если отстал далеко позади игрока — исчезаем
+	if global_position.z > _player.global_position.z + 35.0:
+		queue_free()
+		return
+
 	var to: Vector3 = _player.global_position - global_position
 	to.y = 0.0
 	var dist := to.length()

@@ -1,11 +1,11 @@
 extends Node
-## Глобальное состояние: очки, волна, рекорд.
+## Глобальное состояние: очки, уровень, рекорд.
 
 const SAVE_PATH := "user://skibidi.cfg"
 
 var high_score := 0
 var score := 0
-var wave := 1
+var level := 1
 
 
 func _ready() -> void:
@@ -26,7 +26,7 @@ func save_data() -> void:
 
 func reset_run() -> void:
 	score = 0
-	wave = 1
+	level = 1
 
 
 func add_score(n: int) -> void:
