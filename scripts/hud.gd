@@ -7,6 +7,7 @@ var _player: Node3D
 var _hp_fill: ColorRect
 var _score_l: Label
 var _level_l: Label
+var _coins_l: Label
 var _high_l: Label
 var _flash_l: Label
 var _flash_t := 0.0
@@ -52,6 +53,15 @@ func _build() -> void:
 	_level_l.add_theme_font_size_override("font_size", 22)
 	_level_l.modulate = Color(1.0, 0.5, 0.4)
 	add_child(_level_l)
+
+	_coins_l = Label.new()
+	_coins_l.offset_left = 20
+	_coins_l.offset_top = 128
+	_coins_l.offset_right = 400
+	_coins_l.offset_bottom = 158
+	_coins_l.add_theme_font_size_override("font_size", 22)
+	_coins_l.modulate = Color(1.0, 0.85, 0.3)
+	add_child(_coins_l)
 
 	# вспышка при смене уровня
 	_flash_l = Label.new()
@@ -195,6 +205,7 @@ func _build() -> void:
 	_over.add_child(to_menu)
 
 	update_score()
+	update_coins()
 	set_level(1)
 	_hp(100, 100)
 
@@ -222,6 +233,11 @@ func update_score() -> void:
 		_score_l.text = "Очки: %d" % GameState.score
 	if _high_l:
 		_high_l.text = "Рекорд: %d" % GameState.high_score
+
+
+func update_coins() -> void:
+	if _coins_l:
+		_coins_l.text = "Монеты: %d" % GameState.coins
 
 
 func set_level(lvl: int) -> void:

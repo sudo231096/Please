@@ -1,5 +1,5 @@
 extends Node3D
-## Главное меню: камерамен стоит на улице, выбор уровня.
+## Главное меню: камерамен стоит на улице, лента уровней, монеты, магазин.
 
 const CameramanIdle := preload("res://scripts/cameraman_idle.gd")
 const MAX_LEVEL := 50
@@ -7,13 +7,21 @@ const MAX_LEVEL := 50
 var _cam: Camera3D
 var _angle := 0.0
 var _cameraman: Node3D
+var _coins_l: Label
 var _unlocked_l: Label
-var _grid: GridContainer
+var _strip: HBoxContainer
+var _shop: Control
+var _shop_coins_l: Label
+var _dmg_lbl: Label
+var _dmg_btn: Button
+var _hp_lbl: Label
+var _hp_btn: Button
 
 
 func _ready() -> void:
 	_build_world()
 	_build_ui()
+	_refresh()
 
 
 func _box(size: Vector3, pos: Vector3, color: Color, parent: Node3D, emissive: Color = Color(0, 0, 0, 0)) -> MeshInstance3D:
@@ -39,7 +47,6 @@ func _build_world() -> void:
 	dl.light_energy = 1.2
 	add_child(dl)
 
-	# земля
 	var g := MeshInstance3D.new()
 	var pm := PlaneMesh.new()
 	pm.size = Vector2(60, 60)
@@ -51,10 +58,8 @@ func _build_world() -> void:
 	g.position = Vector3(0, -0.01, 0)
 	add_child(g)
 
-	# дорога
 	_box(Vector3(10, 0.04, 40), Vector3(0, 0.02, 0), Color(0.14, 0.14, 0.16), self)
 
-	# здания по бокам
 	var rng := RandomNumberGenerator.new()
 	rng.seed = 1234
 	for i in range(8):
@@ -64,20 +69,17 @@ func _build_world() -> void:
 		var xc := side * 9.5
 		var base := Color(rng.randf_range(0.25, 0.5), rng.randf_range(0.22, 0.4), rng.randf_range(0.2, 0.35))
 		_box(Vector3(6.5, h, 4.0), Vector3(xc, h * 0.5, z), base, self)
-		# окна
 		for r in range(3):
 			var wy := 2.0 + r * 2.6
 			if wy > h - 1.0:
 				break
 			_box(Vector3(0.1, 1.3, 1.0), Vector3(side * (xc - side * 3.2), wy, z), Color(0.1, 0.12, 0.16), self, Color(1.0, 0.9, 0.5))
 
-	# камерамен по центру
 	_cameraman = Node3D.new()
 	_cameraman.set_script(CameramanIdle)
 	_cameraman.position = Vector3(0, 0, -4)
 	add_child(_cameraman)
 
-	# пара скибиди-туалетов для атмосферы (застывшие)
 	for i in range(2):
 		_spawn_decor_skibidi(Vector3(-3.5 + i * 7.0, 0, -2))
 
@@ -111,10 +113,11 @@ func _build_ui() -> void:
 	add_child(layer)
 
 	var dim := ColorRect.new()
-	dim.color = Color(0, 0, 0, 0.35)
+	dim.color = Color(0, 0, 0, 0.4)
 	dim.set_anchors_preset(Control.PRESET_FULL_RECT)
 	layer.add_child(dim)
 
+	# --- заголовок ---
 	var title := Label.new()
 	title.text = "SKIBIDI TOILET SURVIVAL"
 	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
@@ -126,47 +129,177 @@ func _build_ui() -> void:
 	title.modulate = Color(0.6, 0.85, 1.0)
 	layer.add_child(title)
 
+	# --- монеты (сверху слева) ---
+	_coins_l = Label.new()
+	_coins_l.offset_left = 20
+	_coins_l.offset_top = 18
+	_coins_l.offset_right = 400
+	_coins_l.offset_bottom = 58
+	_coins_l.add_theme_font_size_override("font_size", 28)
+	_coins_l.modulate = Color(1.0, 0.85, 0.3)
+	layer.add_child(_coins_l)
+
+	# --- кнопка магазина (сверху справа) ---
+	var shop_btn := Button.new()
+	shop_btn.text = "МАГАЗИН"
+	shop_btn.focus_mode = Control.FOCUS_NONE
+	shop_btn.anchor_left = 1.0
+	shop_btn.anchor_right = 1.0
+	shop_btn.offset_left = -180
+	shop_btn.offset_right = -20
+	shop_btn.offset_top = 16
+	shop_btn.offset_bottom = 66
+	shop_btn.add_theme_font_size_override("font_size", 24)
+	shop_btn.modulate = Color(1.0, 0.85, 0.4)
+	shop_btn.pressed.connect(func() -> void:
+		_shop.visible = not _shop.visible
+		_refresh_shop()
+	)
+	layer.add_child(shop_btn)
+
 	_unlocked_l = Label.new()
 	_unlocked_l.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	_unlocked_l.anchor_left = 0.05
 	_unlocked_l.anchor_right = 0.95
 	_unlocked_l.offset_top = 74
-	_unlocked_l.offset_bottom = 110
-	_unlocked_l.add_theme_font_size_override("font_size", 24)
-	_unlocked_l.modulate = Color(1.0, 0.85, 0.4)
+	_unlocked_l.offset_bottom = 108
+	_unlocked_l.add_theme_font_size_override("font_size", 22)
+	_unlocked_l.modulate = Color(0.9, 0.9, 0.9, 0.85)
 	layer.add_child(_unlocked_l)
 
-	# сетка уровней
-	var scroll := ScrollContainer.new()
-	scroll.anchor_left = 0.08
-	scroll.anchor_right = 0.92
-	scroll.anchor_top = 0.0
-	scroll.anchor_bottom = 1.0
-	scroll.offset_top = 120
-	scroll.offset_bottom = -30
-	layer.add_child(scroll)
+	# --- большая кнопка ИГРАТЬ ---
+	var play := Button.new()
+	play.text = "ИГРАТЬ"
+	play.focus_mode = Control.FOCUS_NONE
+	play.anchor_left = 0.5
+	play.anchor_right = 0.5
+	play.offset_left = -170
+	play.offset_right = 170
+	play.offset_top = 160
+	play.offset_bottom = 250
+	play.add_theme_font_size_override("font_size", 40)
+	play.modulate = Color(0.5, 1.0, 0.55)
+	play.pressed.connect(func() -> void:
+		_start(GameState.unlocked)
+	)
+	layer.add_child(play)
 
-	_grid = GridContainer.new()
-	_grid.columns = 10
-	_grid.add_theme_constant_override("h_separation", 8)
-	_grid.add_theme_constant_override("v_separation", 8)
-	scroll.add_child(_grid)
+	# --- горизонтальная лента уровней (внизу) ---
+	var strip_scroll := ScrollContainer.new()
+	strip_scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_AUTO
+	strip_scroll.vertical_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	strip_scroll.anchor_left = 0.0
+	strip_scroll.anchor_right = 1.0
+	strip_scroll.anchor_top = 1.0
+	strip_scroll.anchor_bottom = 1.0
+	strip_scroll.offset_top = -150
+	strip_scroll.offset_bottom = -20
+	strip_scroll.offset_left = 10
+	strip_scroll.offset_right = -10
+	layer.add_child(strip_scroll)
 
-	_refresh()
-	GameState.load_data()
+	_strip = HBoxContainer.new()
+	_strip.add_theme_constant_override("separation", 8)
+	strip_scroll.add_child(_strip)
+
+	_build_shop(layer)
+
+
+func _build_shop(layer: CanvasLayer) -> void:
+	_shop = Control.new()
+	_shop.set_anchors_preset(Control.PRESET_FULL_RECT)
+	_shop.visible = false
+	layer.add_child(_shop)
+
+	var dim := ColorRect.new()
+	dim.color = Color(0, 0, 0, 0.7)
+	dim.set_anchors_preset(Control.PRESET_FULL_RECT)
+	_shop.add_child(dim)
+
+	var panel := PanelContainer.new()
+	panel.anchor_left = 0.5
+	panel.anchor_right = 0.5
+	panel.anchor_top = 0.5
+	panel.anchor_bottom = 0.5
+	panel.offset_left = -300
+	panel.offset_right = 300
+	panel.offset_top = -280
+	panel.offset_bottom = 280
+	_shop.add_child(panel)
+
+	var v := VBoxContainer.new()
+	v.add_theme_constant_override("separation", 12)
+	panel.add_child(v)
+
+	var t := Label.new()
+	t.text = "МАГАЗИН"
+	t.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	t.add_theme_font_size_override("font_size", 32)
+	t.modulate = Color(1.0, 0.85, 0.4)
+	v.add_child(t)
+
+	_shop_coins_l = Label.new()
+	_shop_coins_l.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_shop_coins_l.add_theme_font_size_override("font_size", 24)
+	_shop_coins_l.modulate = Color(1.0, 0.85, 0.3)
+	v.add_child(_shop_coins_l)
+
+	var sep := HSeparator.new()
+	v.add_child(sep)
+
+	_dmg_lbl = Label.new()
+	_dmg_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_dmg_lbl.add_theme_font_size_override("font_size", 20)
+	v.add_child(_dmg_lbl)
+
+	_dmg_btn = Button.new()
+	_dmg_btn.focus_mode = Control.FOCUS_NONE
+	_dmg_btn.add_theme_font_size_override("font_size", 22)
+	_dmg_btn.pressed.connect(func() -> void:
+		GameState.buy_damage()
+		_refresh_shop()
+	)
+	v.add_child(_dmg_btn)
+
+	var sep2 := HSeparator.new()
+	v.add_child(sep2)
+
+	_hp_lbl = Label.new()
+	_hp_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_hp_lbl.add_theme_font_size_override("font_size", 20)
+	v.add_child(_hp_lbl)
+
+	_hp_btn = Button.new()
+	_hp_btn.focus_mode = Control.FOCUS_NONE
+	_hp_btn.add_theme_font_size_override("font_size", 22)
+	_hp_btn.pressed.connect(func() -> void:
+		GameState.buy_hp()
+		_refresh_shop()
+	)
+	v.add_child(_hp_btn)
+
+	var close := Button.new()
+	close.text = "Закрыть"
+	close.focus_mode = Control.FOCUS_NONE
+	close.add_theme_font_size_override("font_size", 24)
+	close.pressed.connect(func() -> void:
+		_shop.visible = false
+	)
+	v.add_child(close)
 
 
 func _refresh() -> void:
-	for c in _grid.get_children():
+	for c in _strip.get_children():
 		c.queue_free()
 	_unlocked_l.text = "Открыто уровней: %d / %d" % [GameState.unlocked, MAX_LEVEL]
+	_coins_l.text = "Монеты: %d" % GameState.coins
 
 	for i in range(1, MAX_LEVEL + 1):
 		var b := Button.new()
 		b.text = str(i)
-		b.custom_minimum_size = Vector2(72, 52)
+		b.custom_minimum_size = Vector2(64, 96)
 		b.focus_mode = Control.FOCUS_NONE
-		b.add_theme_font_size_override("font_size", 20)
+		b.add_theme_font_size_override("font_size", 26)
 		var opened := i <= GameState.unlocked
 		b.disabled = not opened
 		if i == GameState.unlocked:
@@ -174,10 +307,29 @@ func _refresh() -> void:
 		elif opened:
 			b.modulate = Color.WHITE
 		else:
-			b.modulate = Color(0.5, 0.5, 0.5)
+			b.modulate = Color(0.45, 0.45, 0.45)
 		var lvl := i
 		b.pressed.connect(func() -> void: _start(lvl))
-		_grid.add_child(b)
+		_strip.add_child(b)
+
+	_refresh_shop()
+
+
+func _refresh_shop() -> void:
+	if _coins_l:
+		_coins_l.text = "Монеты: %d" % GameState.coins
+	if _shop_coins_l:
+		_shop_coins_l.text = "Монеты: %d" % GameState.coins
+	if _dmg_lbl:
+		_dmg_lbl.text = "Урон: %.0f  (ур. %d)" % [GameState.player_damage(), GameState.damage_level]
+	if _dmg_btn:
+		_dmg_btn.text = "Прокачать урон — %d" % GameState.damage_upgrade_cost()
+		_dmg_btn.disabled = GameState.coins < GameState.damage_upgrade_cost()
+	if _hp_lbl:
+		_hp_lbl.text = "HP: %.0f  (ур. %d)" % [GameState.player_max_hp(), GameState.hp_level]
+	if _hp_btn:
+		_hp_btn.text = "Прокачать HP — %d" % GameState.hp_upgrade_cost()
+		_hp_btn.disabled = GameState.coins < GameState.hp_upgrade_cost()
 
 
 func _start(level: int) -> void:

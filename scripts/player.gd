@@ -3,12 +3,12 @@ extends CharacterBody3D
 
 const RUN_SPEED := 6.0
 const STRAFE_SPEED := 6.0
-const MAX_HP := 100
 const FIRE_CD := 0.35
-const DAMAGE := 34.0
 const STREET_HALF := 4.6
 
-var hp := MAX_HP
+var max_hp := 100.0
+var hp := 100.0
+var damage := 34.0
 var _fire_t := 0.0
 var _invuln := 0.0
 
@@ -23,7 +23,9 @@ func _ready() -> void:
 	collision_layer = 2
 	collision_mask = 1
 	_build()
-	hp = MAX_HP
+	max_hp = GameState.player_max_hp()
+	hp = max_hp
+	damage = GameState.player_damage()
 
 
 func _box(size: Vector3, pos: Vector3, color: Color) -> MeshInstance3D:
@@ -160,6 +162,7 @@ func _fire() -> void:
 	get_tree().current_scene.add_child(b)
 	b.global_position = spawn
 	b.dir = dir3
+	b.damage = damage
 
 
 func take_damage(amount: float, from: Node = null, knock: float = 0.0) -> void:
@@ -167,6 +170,6 @@ func take_damage(amount: float, from: Node = null, knock: float = 0.0) -> void:
 		return
 	hp = maxf(0.0, hp - amount)
 	_invuln = 0.4
-	hp_changed.emit(hp, MAX_HP)
+	hp_changed.emit(hp, max_hp)
 	if hp <= 0.0:
 		died.emit()

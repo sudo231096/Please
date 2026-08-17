@@ -257,7 +257,9 @@ func _spawn_enemies() -> void:
 
 func _on_enemy_died() -> void:
 	GameState.add_score(10 * GameState.current)
+	GameState.add_coins(2 + GameState.current)
 	_hud.update_score()
+	_hud.update_coins()
 
 
 func _on_player_died() -> void:
@@ -272,6 +274,7 @@ func _complete_level() -> void:
 		return
 	_state = "complete"
 	GameState.complete_level(_level)
+	GameState.add_coins(20 + _level * 5)
 	_hud.show_complete(_level)
 	await get_tree().create_timer(2.2).timeout
 	get_tree().change_scene_to_file("res://scenes/MainMenu.tscn")
