@@ -1,21 +1,23 @@
 extends CharacterBody3D
-## Камерамен — бежит вперёд по улице, стрейфится и стреляет.
+## Камерамен — бежит вперёд по улице, дерётся кулаками (ближний бой).
 
 const RUN_SPEED := 6.0
 const STRAFE_SPEED := 6.0
-const FIRE_CD := 0.35
+const MELEE_RANGE := 2.8
+const MELEE_CD := 0.45
 const STREET_HALF := 4.6
 
 var max_hp := 100.0
 var hp := 100.0
 var damage := 34.0
-var _fire_t := 0.0
+var _punch_t := 0.0
+var _punch_cd := 0.0
 var _invuln := 0.0
+var _fist_r: Node3D
+var _fist_l: Node3D
 
 signal died
 signal hp_changed(hp: float, max_hp: float)
-
-const BulletScr := preload("res://scripts/bullet.gd")
 
 
 func _ready() -> void:
@@ -28,7 +30,7 @@ func _ready() -> void:
 	damage = GameState.player_damage()
 
 
-func _box(size: Vector3, pos: Vector3, color: Color) -> MeshInstance3D:
+func _box(size: Vector3, pos: Vector3, color: Color, parent: Node3D = null) -> MeshInstance3D:
 	var m := MeshInstance3D.new()
 	var bm := BoxMesh.new()
 	bm.size = size
@@ -38,7 +40,7 @@ func _box(size: Vector3, pos: Vector3, color: Color) -> MeshInstance3D:
 	mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
 	m.material_override = mat
 	m.position = pos
-	add_child(m)
+	(parent if parent else self).add_child(m)
 	return m
 
 
@@ -52,16 +54,28 @@ func _build() -> void:
 	add_child(col)
 
 	var navy := Color(0.16, 0.2, 0.32)
+	var skin := Color(0.93, 0.78, 0.62)
 	# ноги
 	_box(Vector3(0.24, 0.5, 0.24), Vector3(-0.18, 0.5, 0), Color(0.1, 0.1, 0.14))
 	_box(Vector3(0.24, 0.5, 0.24), Vector3(0.18, 0.5, 0), Color(0.1, 0.1, 0.14))
 	# торс
 	_box(Vector3(0.7, 0.9, 0.45), Vector3(0, 1.05, 0), navy)
-	# руки
-	_box(Vector3(0.2, 0.6, 0.2), Vector3(-0.5, 1.05, 0), navy)
-	_box(Vector3(0.2, 0.6, 0.2), Vector3(0.5, 1.05, 0), navy)
+
+	# кулаки (руки) — узлы для анимации
+	_fist_r = Node3D.new()
+	_fist_r.position = Vector3(0.5, 1.05, 0)
+	add_child(_fist_r)
+	_box(Vector3(0.2, 0.6, 0.2), Vector3(0, 0, 0), navy, _fist_r)
+	_box(Vector3(0.22, 0.22, 0.22), Vector3(0, -0.42, 0), skin, _fist_r)
+
+	_fist_l = Node3D.new()
+	_fist_l.position = Vector3(-0.5, 1.05, 0)
+	add_child(_fist_l)
+	_box(Vector3(0.2, 0.6, 0.2), Vector3(0, 0, 0), navy, _fist_l)
+	_box(Vector3(0.22, 0.22, 0.22), Vector3(0, -0.42, 0), skin, _fist_l)
+
 	# шея
-	_box(Vector3(0.16, 0.2, 0.16), Vector3(0, 1.55, 0), Color(0.93, 0.78, 0.62))
+	_box(Vector3(0.16, 0.2, 0.16), Vector3(0, 1.55, 0), skin)
 	# голова-камера
 	_box(Vector3(0.55, 0.55, 0.55), Vector3(0, 1.85, 0), Color(0.2, 0.22, 0.26))
 	# объектив (вперёд, -Z)
@@ -88,7 +102,7 @@ func _cyl(r: float, h: float, color: Color) -> MeshInstance3D:
 
 
 func _physics_process(delta: float) -> void:
-	_fire_t = maxf(0.0, _fire_t - delta)
+	_punch_cd = maxf(0.0, _punch_cd - delta)
 	_invuln = maxf(0.0, _invuln - delta)
 	if hp <= 0.0:
 		return
@@ -120,12 +134,14 @@ func _physics_process(delta: float) -> void:
 	else:
 		look_at(global_position + Vector3(0, 0, -1), Vector3.UP)
 
-	# стрельба
-	var fire := Input.is_physical_key_pressed(KEY_SPACE) or Input.is_physical_key_pressed(KEY_J) or Input.is_mouse_button_pressed(MOUSE_BUTTON_LEFT)
+	# удар рукой
+	var punch := Input.is_physical_key_pressed(KEY_SPACE) or Input.is_physical_key_pressed(KEY_J) or Input.is_physical_key_pressed(KEY_K) or Input.is_mouse_button_pressed(MOUSE_BUTTON_LEFT)
 	if has_meta("mob_fire") and bool(get_meta("mob_fire")):
-		fire = true
-	if fire and _fire_t <= 0.0:
-		_fire()
+		punch = true
+	if punch and _punch_cd <= 0.0:
+		_punch()
+
+	_animate_punch(delta)
 
 	move_and_slide()
 
@@ -142,27 +158,27 @@ func _nearest_enemy() -> Node3D:
 	return best
 
 
-func _fire() -> void:
-	_fire_t = FIRE_CD
-	var dir3 := Vector3(0, 0, -1)
-	var t := _nearest_enemy()
-	if t:
-		dir3 = t.global_position - global_position
-		dir3.y = 0.0
-		if dir3.length() > 0.01:
-			dir3 = dir3.normalized()
-		else:
-			dir3 = Vector3(0, 0, -1)
-	else:
-		dir3 = Vector3(0, 0, -1)
+func _punch() -> void:
+	_punch_cd = MELEE_CD
+	_punch_t = 0.22
+	# бьём всех врагов в радиусе
+	for e in get_tree().get_nodes_in_group("enemies"):
+		var en := e as Node3D
+		var d: float = en.global_position.distance_to(global_position)
+		if d <= MELEE_RANGE and en.has_method("take_damage"):
+			en.take_damage(damage)
 
-	var b := Area3D.new()
-	b.set_script(BulletScr)
-	var spawn := global_position + Vector3(0, 1.85, 0) + dir3 * 0.7
-	get_tree().current_scene.add_child(b)
-	b.global_position = spawn
-	b.dir = dir3
-	b.damage = damage
+
+func _animate_punch(delta: float) -> void:
+	if _punch_t > 0.0:
+		_punch_t -= delta
+		var k := _punch_t / 0.22  # 1 -> 0
+		var reach := k * 0.9
+		_fist_r.position.z = -reach
+		_fist_l.position.z = -reach * 0.7
+	else:
+		_fist_r.position.z = 0.0
+		_fist_l.position.z = 0.0
 
 
 func take_damage(amount: float, from: Node = null, knock: float = 0.0) -> void:

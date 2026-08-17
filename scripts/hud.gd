@@ -128,7 +128,7 @@ func _build() -> void:
 
 	# кнопка стрельбы
 	var fire := Button.new()
-	fire.text = "ОГОНЬ"
+	fire.text = "УДАР"
 	fire.focus_mode = Control.FOCUS_NONE
 	fire.anchor_left = 1.0
 	fire.anchor_right = 1.0
