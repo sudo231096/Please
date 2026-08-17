@@ -77,6 +77,22 @@ func _build() -> void:
 	_high_l.modulate = Color(0.9, 0.9, 0.9, 0.8)
 	add_child(_high_l)
 
+	# кнопка меню
+	var menu := Button.new()
+	menu.text = "МЕНЮ"
+	menu.focus_mode = Control.FOCUS_NONE
+	menu.anchor_left = 1.0
+	menu.anchor_right = 1.0
+	menu.offset_left = -130
+	menu.offset_right = -20
+	menu.offset_top = 56
+	menu.offset_bottom = 104
+	menu.add_theme_font_size_override("font_size", 22)
+	menu.pressed.connect(func() -> void:
+		get_tree().change_scene_to_file("res://scenes/MainMenu.tscn")
+	)
+	add_child(menu)
+
 	# HP бар
 	var hp_bg := ColorRect.new()
 	hp_bg.color = Color(0.1, 0.1, 0.1, 0.6)
@@ -163,6 +179,21 @@ func _build() -> void:
 	)
 	_over.add_child(restart)
 
+	var to_menu := Button.new()
+	to_menu.text = "В МЕНЮ"
+	to_menu.focus_mode = Control.FOCUS_NONE
+	to_menu.anchor_left = 0.5
+	to_menu.anchor_right = 0.5
+	to_menu.anchor_top = 0.7
+	to_menu.anchor_bottom = 0.8
+	to_menu.offset_left = -140
+	to_menu.offset_right = 140
+	to_menu.add_theme_font_size_override("font_size", 30)
+	to_menu.pressed.connect(func() -> void:
+		get_tree().change_scene_to_file("res://scenes/MainMenu.tscn")
+	)
+	_over.add_child(to_menu)
+
 	update_score()
 	set_level(1)
 	_hp(100, 100)
@@ -215,3 +246,12 @@ func _hp(v: float, mx: float) -> void:
 func show_game_over(score: int) -> void:
 	_over_score.text = "Очки: %d · Рекорд: %d" % [score, GameState.high_score]
 	_over.visible = true
+
+
+func show_complete(lvl: int) -> void:
+	if _flash_l:
+		_flash_l.text = "УРОВЕНЬ %d ПРОЙДЕН!" % lvl
+		_flash_l.modulate = Color(0.5, 1.0, 0.55)
+		_flash_l.visible = true
+		_flash_l.modulate.a = 1.0
+		_flash_t = 2.2

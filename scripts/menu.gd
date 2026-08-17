@@ -1,0 +1,185 @@
+extends Node3D
+## Главное меню: камерамен стоит на улице, выбор уровня.
+
+const CameramanIdle := preload("res://scripts/cameraman_idle.gd")
+const MAX_LEVEL := 50
+
+var _cam: Camera3D
+var _angle := 0.0
+var _cameraman: Node3D
+var _unlocked_l: Label
+var _grid: GridContainer
+
+
+func _ready() -> void:
+	_build_world()
+	_build_ui()
+
+
+func _box(size: Vector3, pos: Vector3, color: Color, parent: Node3D, emissive: Color = Color(0, 0, 0, 0)) -> MeshInstance3D:
+	var m := MeshInstance3D.new()
+	var bm := BoxMesh.new()
+	bm.size = size
+	m.mesh = bm
+	var mat := StandardMaterial3D.new()
+	mat.albedo_color = color
+	mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	if emissive.a > 0.0:
+		mat.emission_enabled = true
+		mat.emission = emissive
+	m.material_override = mat
+	m.position = pos
+	parent.add_child(m)
+	return m
+
+
+func _build_world() -> void:
+	var dl := DirectionalLight3D.new()
+	dl.rotation_degrees = Vector3(-55, 30, 0)
+	dl.light_energy = 1.2
+	add_child(dl)
+
+	# земля
+	var g := MeshInstance3D.new()
+	var pm := PlaneMesh.new()
+	pm.size = Vector2(60, 60)
+	g.mesh = pm
+	var gmat := StandardMaterial3D.new()
+	gmat.albedo_color = Color(0.22, 0.24, 0.26)
+	gmat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	g.material_override = gmat
+	g.position = Vector3(0, -0.01, 0)
+	add_child(g)
+
+	# дорога
+	_box(Vector3(10, 0.04, 40), Vector3(0, 0.02, 0), Color(0.14, 0.14, 0.16), self)
+
+	# здания по бокам
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 1234
+	for i in range(8):
+		var side := -1 if i % 2 == 0 else 1
+		var z := -18.0 + (i * 4.5)
+		var h := rng.randf_range(6.0, 14.0)
+		var xc := side * 9.5
+		var base := Color(rng.randf_range(0.25, 0.5), rng.randf_range(0.22, 0.4), rng.randf_range(0.2, 0.35))
+		_box(Vector3(6.5, h, 4.0), Vector3(xc, h * 0.5, z), base, self)
+		# окна
+		for r in range(3):
+			var wy := 2.0 + r * 2.6
+			if wy > h - 1.0:
+				break
+			_box(Vector3(0.1, 1.3, 1.0), Vector3(side * (xc - side * 3.2), wy, z), Color(0.1, 0.12, 0.16), self, Color(1.0, 0.9, 0.5))
+
+	# камерамен по центру
+	_cameraman = Node3D.new()
+	_cameraman.set_script(CameramanIdle)
+	_cameraman.position = Vector3(0, 0, -4)
+	add_child(_cameraman)
+
+	# пара скибиди-туалетов для атмосферы (застывшие)
+	for i in range(2):
+		_spawn_decor_skibidi(Vector3(-3.5 + i * 7.0, 0, -2))
+
+	_cam = Camera3D.new()
+	_cam.current = true
+	_cam.fov = 55
+	add_child(_cam)
+
+
+func _spawn_decor_skibidi(pos: Vector3) -> void:
+	var n := Node3D.new()
+	n.position = pos
+	add_child(n)
+	_box(Vector3(1.0, 0.7, 0.85), Vector3(0, 0.35, 0), Color(0.87, 0.87, 0.9), n)
+	_box(Vector3(0.9, 0.55, 0.28), Vector3(0, 0.82, -0.55), Color(0.87, 0.87, 0.9), n)
+	_box(Vector3(0.5, 0.5, 0.5), Vector3(0, 1.45, 0), Color(0.78, 0.8, 0.68), n)
+
+
+func _process(delta: float) -> void:
+	if not _cam or not _cameraman:
+		return
+	_angle += delta * 0.35
+	var r := 7.0
+	var cx: Vector3 = _cameraman.global_position
+	_cam.global_position = cx + Vector3(cos(_angle) * r, 3.6, sin(_angle) * r)
+	_cam.look_at(cx + Vector3(0, 1.3, 0), Vector3.UP)
+
+
+func _build_ui() -> void:
+	var layer := CanvasLayer.new()
+	add_child(layer)
+
+	var dim := ColorRect.new()
+	dim.color = Color(0, 0, 0, 0.35)
+	dim.set_anchors_preset(Control.PRESET_FULL_RECT)
+	layer.add_child(dim)
+
+	var title := Label.new()
+	title.text = "SKIBIDI TOILET SURVIVAL"
+	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	title.anchor_left = 0.05
+	title.anchor_right = 0.95
+	title.offset_top = 16
+	title.offset_bottom = 70
+	title.add_theme_font_size_override("font_size", 40)
+	title.modulate = Color(0.6, 0.85, 1.0)
+	layer.add_child(title)
+
+	_unlocked_l = Label.new()
+	_unlocked_l.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_unlocked_l.anchor_left = 0.05
+	_unlocked_l.anchor_right = 0.95
+	_unlocked_l.offset_top = 74
+	_unlocked_l.offset_bottom = 110
+	_unlocked_l.add_theme_font_size_override("font_size", 24)
+	_unlocked_l.modulate = Color(1.0, 0.85, 0.4)
+	layer.add_child(_unlocked_l)
+
+	# сетка уровней
+	var scroll := ScrollContainer.new()
+	scroll.anchor_left = 0.08
+	scroll.anchor_right = 0.92
+	scroll.anchor_top = 0.0
+	scroll.anchor_bottom = 1.0
+	scroll.offset_top = 120
+	scroll.offset_bottom = -30
+	layer.add_child(scroll)
+
+	_grid = GridContainer.new()
+	_grid.columns = 10
+	_grid.add_theme_constant_override("h_separation", 8)
+	_grid.add_theme_constant_override("v_separation", 8)
+	scroll.add_child(_grid)
+
+	_refresh()
+	GameState.load_data()
+
+
+func _refresh() -> void:
+	for c in _grid.get_children():
+		c.queue_free()
+	_unlocked_l.text = "Открыто уровней: %d / %d" % [GameState.unlocked, MAX_LEVEL]
+
+	for i in range(1, MAX_LEVEL + 1):
+		var b := Button.new()
+		b.text = str(i)
+		b.custom_minimum_size = Vector2(72, 52)
+		b.focus_mode = Control.FOCUS_NONE
+		b.add_theme_font_size_override("font_size", 20)
+		var opened := i <= GameState.unlocked
+		b.disabled = not opened
+		if i == GameState.unlocked:
+			b.modulate = Color(0.7, 1.0, 0.6)
+		elif opened:
+			b.modulate = Color.WHITE
+		else:
+			b.modulate = Color(0.5, 0.5, 0.5)
+		var lvl := i
+		b.pressed.connect(func() -> void: _start(lvl))
+		_grid.add_child(b)
+
+
+func _start(level: int) -> void:
+	GameState.start_level(level)
+	get_tree().change_scene_to_file("res://scenes/Main.tscn")

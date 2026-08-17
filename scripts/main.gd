@@ -1,5 +1,5 @@
 extends Node3D
-## Городская улица: камерамен бежит вперёд, уровни растут, город генерируется кусками.
+## Уровень: камерамен бежит вперёд по городу до финиша, отбиваясь от туалетов.
 
 const PlayerScr := preload("res://scripts/player.gd")
 const SkibidiScr := preload("res://scripts/skibidi.gd")
@@ -7,63 +7,60 @@ const HudScr := preload("res://scripts/hud.gd")
 
 const CHUNK_LEN := 16.0
 const HORIZON := 150.0
-const LEVEL_LEN := 100.0
-
 const ROAD_HALF := 5.0
 const WALL_X := 6.5
 
 var _player: CharacterBody3D
 var _cam: Camera3D
 var _hud: CanvasLayer
-var _chunks: Array = []   # [{node, z}]
+var _chunks: Array = []
 var _next_z := 0.0
 var _level := 1
+var _level_len := 100.0
+var _finish_z := -100.0
 var _spawn_t := 1.0
 var _road_rng := RandomNumberGenerator.new()
+var _state := "playing"   # playing / over / complete
 
 
 func _ready() -> void:
-	GameState.reset_run()
-	_road_rng.seed = randi()
+	_level = GameState.current
+	_road_rng.seed = 1000 + _level * 97
+	_level_len = 90.0 + _level * 8.0
+	_finish_z = -_level_len
 	_build_light()
 	_build_ground()
 	_build_walls()
 	_spawn_player()
 	_build_hud()
-	# первые куски города
-	while _next_z > -HORIZON:
+	_build_finish()
+	while _next_z > _finish_z - HORIZON * 0.5:
 		_spawn_chunk()
 
 
 func _process(delta: float) -> void:
-	if not _player:
+	if not _player or _state != "playing":
 		return
 
-	# камера: сверху-сзади, смотрит вперёд
 	_cam.global_position = _player.global_position + Vector3(0, 11.5, 7.0)
 	_cam.look_at(_player.global_position + Vector3(0, 1.0, -5.0), Vector3.UP)
 
-	# уровень по пройденной дистанции
-	var dist := -_player.global_position.z
-	var lvl := 1 + int(dist / LEVEL_LEN)
-	if lvl != _level:
-		_level = lvl
-		GameState.level = _level
-		_hud.set_level(_level)
-		_hud.flash_level(_level)
+	# финиш достигнут
+	if _player.global_position.z <= _finish_z:
+		_complete_level()
+		return
 
-	# догоняем генерацию города вперёд
+	# генерация города вперёд
 	while _next_z > _player.global_position.z - HORIZON:
 		_spawn_chunk()
 
-	# убираем куски позади
 	_cleanup_chunks()
 
 	# спавн врагов
 	_spawn_t -= delta
 	if _spawn_t <= 0.0:
 		_spawn_enemies()
-		_spawn_t = clampf(1.4 - float(_level) * 0.06, 0.35, 1.4)
+		_spawn_t = clampf(1.5 - float(_level) * 0.06, 0.4, 1.5)
 
 
 # ---------- окружение ----------
@@ -93,32 +90,34 @@ func _build_light() -> void:
 
 
 func _build_ground() -> void:
+	var len := _level_len + 200.0
 	var g := StaticBody3D.new()
 	g.collision_layer = 1
 	g.collision_mask = 0
 	add_child(g)
 	var col := CollisionShape3D.new()
 	var cs := BoxShape3D.new()
-	cs.size = Vector3(60, 0.5, 4000)
+	cs.size = Vector3(60, 0.5, len)
 	col.shape = cs
-	col.position = Vector3(0, -0.25, -2000)
+	col.position = Vector3(0, -0.25, -len * 0.5)
 	g.add_child(col)
 
 	var m := MeshInstance3D.new()
 	var pm := PlaneMesh.new()
-	pm.size = Vector2(60, 4000)
+	pm.size = Vector2(60, len)
 	m.mesh = pm
 	var mat := StandardMaterial3D.new()
 	mat.albedo_color = Color(0.22, 0.24, 0.26)
 	mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
 	m.material_override = mat
-	m.position = Vector3(0, -0.01, -2000)
+	m.position = Vector3(0, -0.01, -len * 0.5)
 	add_child(m)
 
 
 func _build_walls() -> void:
-	_wall(Vector3(0.5, 4.0, 4000), Vector3(-WALL_X, 2.0, -2000))
-	_wall(Vector3(0.5, 4.0, 4000), Vector3(WALL_X, 2.0, -2000))
+	var len := _level_len + 200.0
+	_wall(Vector3(0.5, 4.0, len), Vector3(-WALL_X, 2.0, -len * 0.5))
+	_wall(Vector3(0.5, 4.0, len), Vector3(WALL_X, 2.0, -len * 0.5))
 
 
 func _wall(size: Vector3, pos: Vector3) -> void:
@@ -135,6 +134,9 @@ func _wall(size: Vector3, pos: Vector3) -> void:
 
 
 func _spawn_chunk() -> void:
+	if _next_z < _finish_z - CHUNK_LEN:
+		_next_z -= CHUNK_LEN
+		return
 	var z := _next_z
 	_next_z -= CHUNK_LEN
 
@@ -143,28 +145,21 @@ func _spawn_chunk() -> void:
 	add_child(chunk)
 	_chunks.append({"node": chunk, "z": z})
 
-	# дорога (тёмный асфальт)
 	_box(Vector3(ROAD_HALF * 2, 0.04, CHUNK_LEN), Vector3(0, 0.02, -CHUNK_LEN * 0.5), Color(0.14, 0.14, 0.16), chunk)
-
-	# тротуары
 	_box(Vector3(1.4, 0.06, CHUNK_LEN), Vector3(-(ROAD_HALF + 0.7), 0.03, -CHUNK_LEN * 0.5), Color(0.42, 0.42, 0.46), chunk)
 	_box(Vector3(1.4, 0.06, CHUNK_LEN), Vector3(ROAD_HALF + 0.7, 0.03, -CHUNK_LEN * 0.5), Color(0.42, 0.42, 0.46), chunk)
 
-	# здания по бокам
-	_building(chunk, -1, z)  # левое
-	_building(chunk, 1, z)   # правое
+	_building(chunk, -1, z)
+	_building(chunk, 1, z)
 
-	# пешеходный переход каждые 4 куска
 	if int(abs(z) / CHUNK_LEN) % 4 == 0:
 		for s in range(5):
 			_box(Vector3(0.7, 0.03, 0.6), Vector3(-2.8 + s * 1.4, 0.045, -CHUNK_LEN * 0.5), Color(0.9, 0.9, 0.92), chunk)
 
-	# фонарь каждые 3 куска
 	if int(abs(z) / CHUNK_LEN) % 3 == 0:
 		_streetlight(chunk, -1, -CHUNK_LEN * 0.3)
 		_streetlight(chunk, 1, -CHUNK_LEN * 0.7)
 
-	# припаркованная машина (редко)
 	if _road_rng.randf() < 0.12:
 		_car(chunk, -CHUNK_LEN * 0.5)
 
@@ -175,7 +170,6 @@ func _building(parent: Node3D, side: int, z: float) -> void:
 	var base := Color(_road_rng.randf_range(0.25, 0.5), _road_rng.randf_range(0.22, 0.4), _road_rng.randf_range(0.2, 0.35))
 	_box(Vector3(6.5, h, CHUNK_LEN - 1.0), Vector3(xc, h * 0.5, -CHUNK_LEN * 0.5), base, parent)
 
-	# окна (обращены к улице)
 	var win_color := Color(1.0, 0.9, 0.5) if _road_rng.randf() < 0.3 else Color(0.75, 0.85, 1.0)
 	var rows := int(h / 2.6)
 	for r in range(rows):
@@ -200,6 +194,14 @@ func _car(parent: Node3D, z: float) -> void:
 	var c := Color(_road_rng.randf_range(0.1, 0.9), _road_rng.randf_range(0.1, 0.9), _road_rng.randf_range(0.1, 0.9))
 	_box(Vector3(2.0, 1.0, 3.6), Vector3(x, 0.5, z), c, parent)
 	_box(Vector3(1.8, 0.7, 1.6), Vector3(x, 1.05, z - 0.4), Color(0.15, 0.18, 0.22), parent)
+
+
+func _build_finish() -> void:
+	var fz := _finish_z
+	# ворота
+	var p1 := _box(Vector3(0.6, 6.0, 0.6), Vector3(-3.5, 3.0, fz), Color(0.9, 0.85, 0.6), self)
+	var p2 := _box(Vector3(0.6, 6.0, 0.6), Vector3(3.5, 3.0, fz), Color(0.9, 0.85, 0.6), self)
+	var banner := _box(Vector3(7.6, 1.4, 0.3), Vector3(0, 6.2, fz), Color(1.0, 0.85, 0.4), self, Color(0.4, 0.2, 0.05))
 
 
 func _cleanup_chunks() -> void:
@@ -233,7 +235,8 @@ func _build_hud() -> void:
 	_hud.set_script(HudScr)
 	add_child(_hud)
 	_hud.bind(_player)
-	_hud.set_level(1)
+	_hud.set_level(_level)
+	_hud.flash_level(_level)
 
 
 func _spawn_enemies() -> void:
@@ -243,7 +246,8 @@ func _spawn_enemies() -> void:
 	for i in range(count):
 		var e := CharacterBody3D.new()
 		e.set_script(SkibidiScr)
-		var z := _player.global_position.z - _road_rng.randf_range(22.0, 40.0)
+		var z := _player.global_position.z - _road_rng.randf_range(20.0, 38.0)
+		z = maxf(z, _finish_z + 10.0)
 		var x := _road_rng.randf_range(-ROAD_HALF + 0.8, ROAD_HALF - 0.8)
 		e.position = Vector3(x, 0, z)
 		add_child(e)
@@ -252,10 +256,22 @@ func _spawn_enemies() -> void:
 
 
 func _on_enemy_died() -> void:
-	GameState.add_score(10 * GameState.level)
+	GameState.add_score(10 * GameState.current)
 	_hud.update_score()
 
 
 func _on_player_died() -> void:
+	if _state != "playing":
+		return
+	_state = "over"
 	_hud.show_game_over(GameState.score)
-	set_process(false)
+
+
+func _complete_level() -> void:
+	if _state != "playing":
+		return
+	_state = "complete"
+	GameState.complete_level(_level)
+	_hud.show_complete(_level)
+	await get_tree().create_timer(2.2).timeout
+	get_tree().change_scene_to_file("res://scenes/MainMenu.tscn")
