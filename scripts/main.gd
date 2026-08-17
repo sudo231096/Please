@@ -222,6 +222,7 @@ func _spawn_player() -> void:
 	_player.set_script(PlayerScr)
 	_player.position = Vector3(0, 0, 6)
 	add_child(_player)
+	_player._finish_limit = _finish_z
 	_player.died.connect(_on_player_died)
 
 	_cam = Camera3D.new()

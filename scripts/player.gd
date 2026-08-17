@@ -1,5 +1,5 @@
 extends CharacterBody3D
-## Камерамен — бежит вперёд по улице, дерётся кулаками (ближний бой).
+## Камерамен — свободно бегает по улице, дерётся кулаками (ближний бой).
 
 const RUN_SPEED := 6.0
 const STRAFE_SPEED := 6.0
@@ -15,6 +15,7 @@ var _punch_cd := 0.0
 var _invuln := 0.0
 var _fist_r: Node3D
 var _fist_l: Node3D
+var _finish_limit := -10000.0
 
 signal died
 signal hp_changed(hp: float, max_hp: float)
@@ -107,32 +108,41 @@ func _physics_process(delta: float) -> void:
 	if hp <= 0.0:
 		return
 
-	# стрейф влево/вправо
-	var strafe := 0.0
+	# движение во все стороны (управляет игрок)
+	var mv_x := 0.0  # влево/вправо
+	var mv_z := 0.0  # вперёд/назад (+ = назад)
 	if Input.is_physical_key_pressed(KEY_A) or Input.is_physical_key_pressed(KEY_LEFT):
-		strafe -= 1.0
+		mv_x -= 1.0
 	if Input.is_physical_key_pressed(KEY_D) or Input.is_physical_key_pressed(KEY_RIGHT):
-		strafe += 1.0
+		mv_x += 1.0
+	if Input.is_physical_key_pressed(KEY_W) or Input.is_physical_key_pressed(KEY_UP):
+		mv_z -= 1.0
+	if Input.is_physical_key_pressed(KEY_S) or Input.is_physical_key_pressed(KEY_DOWN):
+		mv_z += 1.0
 	if has_meta("mob_dir"):
 		var jd: Vector2 = get_meta("mob_dir")
-		strafe += jd.x
+		mv_x += jd.x
+		mv_z += jd.y
 
-	# авто-бег вперёд (-Z)
-	velocity.z = -RUN_SPEED
-	velocity.x = strafe * STRAFE_SPEED
+	var mv := Vector2(mv_x, mv_z)
+	if mv.length() > 1.0:
+		mv = mv.normalized()
+	velocity.x = mv.x * STRAFE_SPEED
+	velocity.z = mv.y * STRAFE_SPEED
 
 	# не выходим за улицу
 	global_position.x = clampf(global_position.x, -STREET_HALF, STREET_HALF)
+	global_position.z = clampf(global_position.z, _finish_limit, 10.0)
 
-	# прицел: ближайший враг, иначе — вперёд
+	# прицел: ближайший враг, иначе — в сторону движения
 	var target := _nearest_enemy()
 	if target:
 		var look_p: Vector3 = target.global_position
 		look_p.y = global_position.y
 		if global_position.distance_to(look_p) > 0.05:
 			look_at(look_p, Vector3.UP)
-	else:
-		look_at(global_position + Vector3(0, 0, -1), Vector3.UP)
+	elif mv.length() > 0.05:
+		look_at(global_position + Vector3(mv.x, 0, mv.y), Vector3.UP)
 
 	# удар рукой
 	var punch := Input.is_physical_key_pressed(KEY_SPACE) or Input.is_physical_key_pressed(KEY_J) or Input.is_physical_key_pressed(KEY_K) or Input.is_mouse_button_pressed(MOUSE_BUTTON_LEFT)
