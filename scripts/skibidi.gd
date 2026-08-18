@@ -2,10 +2,10 @@ extends CharacterBody3D
 ## Скибиди-туалет (скачанная 3D-модель): преследует камерамена.
 
 const ModelScene := preload("res://models/skibidi_toilet.glb")
-# Модель в "сантиметрах" (корень уже со scale 0.01). Подгоняем под ~1.3 м ростом.
-const MODEL_SCALE := 0.017
-# Центрируем и ставим на землю (габариты модели ~91 x 76 x 89 см).
-const MODEL_OFFSET := Vector3(0.25, 0.49, 0.02)
+# Godot уже применяет scale 0.01 из файла, модель нативно ~1.1 x 1.15 x 0.91 м.
+const MODEL_SCALE := 1.0
+# Центрируем по X/Z и ставим на землю (низ модели на y = -0.13).
+const MODEL_OFFSET := Vector3(0.235, 0.13, 0.0)
 
 var hp := 40.0
 var max_hp := 40.0
@@ -37,9 +37,9 @@ func _build() -> void:
 	# коллизия под размер туалета
 	var col := CollisionShape3D.new()
 	var cs := BoxShape3D.new()
-	cs.size = Vector3(0.9, 1.2, 0.8)
+	cs.size = Vector3(1.0, 1.15, 0.9)
 	col.shape = cs
-	col.position = Vector3(0, 0.6, 0)
+	col.position = Vector3(0, 0.575, 0)
 	add_child(col)
 
 	# скачанная модель
