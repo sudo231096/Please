@@ -4,8 +4,10 @@ extends CharacterBody3D
 const ModelScene := preload("res://models/skibidi_toilet.glb")
 # Godot уже применяет scale 0.01 из файла, модель нативно ~1.1 x 1.15 x 0.91 м.
 const MODEL_SCALE := 1.0
-# Центрируем по X/Z и ставим на землю (низ модели на y = -0.13).
-const MODEL_OFFSET := Vector3(0.235, 0.13, 0.0)
+# Модель «лицом» смотрит вдоль +X в исходнике — поворачиваем на 90°, чтобы смотрела вперёд (-Z).
+const MODEL_YAW := 90.0
+# Центрируем и ставим на землю (после поворота низ на y = -0.13, центр Z смещён на +0.236).
+const MODEL_OFFSET := Vector3(0.0, 0.13, -0.236)
 
 var hp := 40.0
 var max_hp := 40.0
@@ -45,6 +47,7 @@ func _build() -> void:
 	# скачанная модель
 	_model = ModelScene.instantiate()
 	_model.scale = Vector3.ONE * MODEL_SCALE
+	_model.rotation_degrees = Vector3(0, MODEL_YAW, 0)
 	_model.position = MODEL_OFFSET
 	add_child(_model)
 

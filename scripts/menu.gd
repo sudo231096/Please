@@ -42,6 +42,16 @@ func _box(size: Vector3, pos: Vector3, color: Color, parent: Node3D, emissive: C
 
 
 func _build_world() -> void:
+	var env := Environment.new()
+	env.background_mode = Environment.BG_COLOR
+	env.background_color = Color(0.42, 0.52, 0.68)
+	env.ambient_light_source = Environment.AMBIENT_SOURCE_COLOR
+	env.ambient_light_color = Color(0.55, 0.6, 0.7)
+	env.ambient_light_energy = 1.0
+	var we := WorldEnvironment.new()
+	we.environment = env
+	add_child(we)
+
 	var dl := DirectionalLight3D.new()
 	dl.rotation_degrees = Vector3(-55, 30, 0)
 	dl.light_energy = 1.2

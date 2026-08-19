@@ -19,3 +19,8 @@ Godot 4.7.1 (GL Compatibility), Android export через GitHub Actions.
 ## Модели
 3D-модель скибиди-туалета: "Skibidi Toilet 2" by snisa (свободное скачивание, rigmodels.com).
 Скибиди-туалет — персонаж серии DaFuq!?Boom! (https://www.youtube.com/@DaFuqBoom).
+
+## Модели
+- Скибиди-туалет: "Skibidi Toilet 2" by snisa (rigmodels.com).
+- Камерамен: "CameraWoman" (rigmodels.com).
+Скибиди-туалет — персонаж серии DaFuq!?Boom! (https://www.youtube.com/@DaFuqBoom).

@@ -7,14 +7,20 @@ const MELEE_RANGE := 2.8
 const MELEE_CD := 0.45
 const STREET_HALF := 4.6
 
+const ModelScene := preload("res://models/cameraman.glb")
+# Модель ~18.8 юнитов ростом (mixamorig). Приводим к ~1.8 м.
+const MODEL_SCALE := 0.0957
+# Модель смотрит «лицом» в +Z — разворачиваем на 180°, чтобы смотрела вперёд (-Z).
+const MODEL_YAW := 180.0
+const MODEL_OFFSET := Vector3(0, 0, 0.099)
+
 var max_hp := 100.0
 var hp := 100.0
 var damage := 34.0
 var _punch_t := 0.0
 var _punch_cd := 0.0
 var _invuln := 0.0
-var _fist_r: Node3D
-var _fist_l: Node3D
+var _model: Node3D
 var _finish_limit := -10000.0
 
 signal died
@@ -48,58 +54,18 @@ func _box(size: Vector3, pos: Vector3, color: Color, parent: Node3D = null) -> M
 func _build() -> void:
 	var col := CollisionShape3D.new()
 	var cs := CapsuleShape3D.new()
-	cs.radius = 0.35
+	cs.radius = 0.4
 	cs.height = 1.7
 	col.shape = cs
 	col.position = Vector3(0, 0.85, 0)
 	add_child(col)
 
-	var navy := Color(0.16, 0.2, 0.32)
-	var skin := Color(0.93, 0.78, 0.62)
-	# ноги
-	_box(Vector3(0.24, 0.5, 0.24), Vector3(-0.18, 0.5, 0), Color(0.1, 0.1, 0.14))
-	_box(Vector3(0.24, 0.5, 0.24), Vector3(0.18, 0.5, 0), Color(0.1, 0.1, 0.14))
-	# торс
-	_box(Vector3(0.7, 0.9, 0.45), Vector3(0, 1.05, 0), navy)
-
-	# кулаки (руки) — узлы для анимации
-	_fist_r = Node3D.new()
-	_fist_r.position = Vector3(0.5, 1.05, 0)
-	add_child(_fist_r)
-	_box(Vector3(0.2, 0.6, 0.2), Vector3(0, 0, 0), navy, _fist_r)
-	_box(Vector3(0.22, 0.22, 0.22), Vector3(0, -0.42, 0), skin, _fist_r)
-
-	_fist_l = Node3D.new()
-	_fist_l.position = Vector3(-0.5, 1.05, 0)
-	add_child(_fist_l)
-	_box(Vector3(0.2, 0.6, 0.2), Vector3(0, 0, 0), navy, _fist_l)
-	_box(Vector3(0.22, 0.22, 0.22), Vector3(0, -0.42, 0), skin, _fist_l)
-
-	# шея
-	_box(Vector3(0.16, 0.2, 0.16), Vector3(0, 1.55, 0), skin)
-	# голова-камера
-	_box(Vector3(0.55, 0.55, 0.55), Vector3(0, 1.85, 0), Color(0.2, 0.22, 0.26))
-	# объектив (вперёд, -Z)
-	var lens := _cyl(0.13, 0.16, Color(0.05, 0.05, 0.08))
-	lens.position = Vector3(0, 1.85, -0.3)
-	lens.rotation_degrees = Vector3(-90, 0, 0)
-	# красная лампочка записи
-	_box(Vector3(0.08, 0.08, 0.08), Vector3(0, 2.14, 0), Color(1.0, 0.2, 0.2))
-
-
-func _cyl(r: float, h: float, color: Color) -> MeshInstance3D:
-	var m := MeshInstance3D.new()
-	var cm := CylinderMesh.new()
-	cm.top_radius = r
-	cm.bottom_radius = r
-	cm.height = h
-	m.mesh = cm
-	var mat := StandardMaterial3D.new()
-	mat.albedo_color = color
-	mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
-	m.material_override = mat
-	add_child(m)
-	return m
+	# скачанная модель камерамена
+	_model = ModelScene.instantiate()
+	_model.scale = Vector3.ONE * MODEL_SCALE
+	_model.rotation_degrees = Vector3(0, MODEL_YAW, 0)
+	_model.position = MODEL_OFFSET
+	add_child(_model)
 
 
 func _physics_process(delta: float) -> void:
@@ -183,12 +149,12 @@ func _animate_punch(delta: float) -> void:
 	if _punch_t > 0.0:
 		_punch_t -= delta
 		var k := _punch_t / 0.22  # 1 -> 0
-		var reach := k * 0.9
-		_fist_r.position.z = -reach
-		_fist_l.position.z = -reach * 0.7
+		# выпад вперёд при ударе
+		_model.position.z = MODEL_OFFSET.z - k * 0.5
+		_model.rotation_degrees.x = -k * 12.0
 	else:
-		_fist_r.position.z = 0.0
-		_fist_l.position.z = 0.0
+		_model.position.z = MODEL_OFFSET.z
+		_model.rotation_degrees.x = 0.0
 
 
 func take_damage(amount: float, from: Node = null, knock: float = 0.0) -> void:
