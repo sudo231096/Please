@@ -9,6 +9,9 @@ const DAMAGE_PER_LEVEL := 6.0
 const BASE_MAX_HP := 100
 const HP_PER_LEVEL := 15
 
+const PROMO_CODE := "SKIBIDI"
+const PROMO_REWARD := 1000000
+
 var high_score := 0
 var score := 0
 var unlocked := 1   # сколько уровней открыто
@@ -16,6 +19,7 @@ var current := 1    # какой уровень играем
 var coins := 0
 var damage_level := 0
 var hp_level := 0
+var promo_redeemed := false
 
 
 func _ready() -> void:
@@ -30,6 +34,7 @@ func load_data() -> void:
 		coins = int(cfg.get_value("g", "coins", 0))
 		damage_level = int(cfg.get_value("g", "damage_level", 0))
 		hp_level = int(cfg.get_value("g", "hp_level", 0))
+		promo_redeemed = bool(cfg.get_value("g", "promo_redeemed", false))
 
 
 func save_data() -> void:
@@ -39,6 +44,7 @@ func save_data() -> void:
 	cfg.set_value("g", "coins", coins)
 	cfg.set_value("g", "damage_level", damage_level)
 	cfg.set_value("g", "hp_level", hp_level)
+	cfg.set_value("g", "promo_redeemed", promo_redeemed)
 	cfg.save(SAVE_PATH)
 
 
@@ -100,3 +106,16 @@ func player_damage() -> float:
 
 func player_max_hp() -> float:
 	return float(BASE_MAX_HP + hp_level * HP_PER_LEVEL)
+
+
+# --- промокод ---
+func redeem_promo(code: String) -> String:
+	if promo_redeemed:
+		return "Промокод уже использован"
+	var c := code.strip_edges().to_upper()
+	if c == PROMO_CODE:
+		promo_redeemed = true
+		coins += PROMO_REWARD
+		save_data()
+		return "Промокод принят! +%d монет" % PROMO_REWARD
+	return "Неверный промокод"

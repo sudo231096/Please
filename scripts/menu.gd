@@ -16,6 +16,9 @@ var _dmg_lbl: Label
 var _dmg_btn: Button
 var _hp_lbl: Label
 var _hp_btn: Button
+var _promo: Control
+var _promo_input: LineEdit
+var _promo_status: Label
 
 
 func _ready() -> void:
@@ -167,6 +170,23 @@ func _build_ui() -> void:
 	)
 	layer.add_child(shop_btn)
 
+	# --- кнопка промокода ---
+	var promo_btn := Button.new()
+	promo_btn.text = "ПРОМОКОД"
+	promo_btn.focus_mode = Control.FOCUS_NONE
+	promo_btn.anchor_left = 1.0
+	promo_btn.anchor_right = 1.0
+	promo_btn.offset_left = -180
+	promo_btn.offset_right = -20
+	promo_btn.offset_top = 74
+	promo_btn.offset_bottom = 124
+	promo_btn.add_theme_font_size_override("font_size", 22)
+	promo_btn.modulate = Color(0.5, 0.85, 1.0)
+	promo_btn.pressed.connect(func() -> void:
+		_promo.visible = not _promo.visible
+	)
+	layer.add_child(promo_btn)
+
 	_unlocked_l = Label.new()
 	_unlocked_l.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	_unlocked_l.anchor_left = 0.05
@@ -213,6 +233,78 @@ func _build_ui() -> void:
 	strip_scroll.add_child(_strip)
 
 	_build_shop(layer)
+	_build_promo(layer)
+
+
+func _build_promo(layer: CanvasLayer) -> void:
+	_promo = Control.new()
+	_promo.set_anchors_preset(Control.PRESET_FULL_RECT)
+	_promo.visible = false
+	layer.add_child(_promo)
+
+	var dim := ColorRect.new()
+	dim.color = Color(0, 0, 0, 0.7)
+	dim.set_anchors_preset(Control.PRESET_FULL_RECT)
+	_promo.add_child(dim)
+
+	var panel := PanelContainer.new()
+	panel.anchor_left = 0.5
+	panel.anchor_right = 0.5
+	panel.anchor_top = 0.5
+	panel.anchor_bottom = 0.5
+	panel.offset_left = -260
+	panel.offset_right = 260
+	panel.offset_top = -160
+	panel.offset_bottom = 160
+	_promo.add_child(panel)
+
+	var v := VBoxContainer.new()
+	v.add_theme_constant_override("separation", 14)
+	panel.add_child(v)
+
+	var t := Label.new()
+	t.text = "ПРОМОКОД"
+	t.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	t.add_theme_font_size_override("font_size", 30)
+	t.modulate = Color(0.5, 0.85, 1.0)
+	v.add_child(t)
+
+	_promo_input = LineEdit.new()
+	_promo_input.placeholder_text = "Введите код"
+	_promo_input.add_theme_font_size_override("font_size", 24)
+	v.add_child(_promo_input)
+
+	var ok := Button.new()
+	ok.text = "Применить"
+	ok.focus_mode = Control.FOCUS_NONE
+	ok.add_theme_font_size_override("font_size", 24)
+	ok.pressed.connect(_redeem_promo)
+	v.add_child(ok)
+
+	_promo_status = Label.new()
+	_promo_status.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_promo_status.add_theme_font_size_override("font_size", 20)
+	_promo_status.text = ""
+	v.add_child(_promo_status)
+
+	var close := Button.new()
+	close.text = "Закрыть"
+	close.focus_mode = Control.FOCUS_NONE
+	close.add_theme_font_size_override("font_size", 22)
+	close.pressed.connect(func() -> void:
+		_promo.visible = false
+	)
+	v.add_child(close)
+
+
+func _redeem_promo() -> void:
+	var res: String = GameState.redeem_promo(_promo_input.text)
+	_promo_status.text = res
+	if GameState.promo_redeemed:
+		_promo_status.modulate = Color(0.5, 1.0, 0.55)
+	else:
+		_promo_status.modulate = Color(1.0, 0.5, 0.5)
+	_refresh()
 
 
 func _build_shop(layer: CanvasLayer) -> void:

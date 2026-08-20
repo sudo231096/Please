@@ -254,9 +254,12 @@ func _build_hud() -> void:
 
 
 func _spawn_enemies() -> void:
-	var count := 1 + int(_level / 4)
-	if count > 4:
-		count = 4
+	# не больше 7 врагов одновременно на уровне
+	var existing := get_tree().get_nodes_in_group("enemies").size()
+	if existing >= 7:
+		return
+	var count := mini(1 + int(_level / 4), 4)
+	count = mini(count, 7 - existing)
 	for i in range(count):
 		var e := CharacterBody3D.new()
 		e.set_script(SkibidiScr)

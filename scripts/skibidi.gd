@@ -51,6 +51,16 @@ func _build() -> void:
 	_model.position = MODEL_OFFSET
 	add_child(_model)
 
+	# голова в сериале Dafuq!?Boom! — чистая серая, а не тёмная «рваная» текстура.
+	# Переопределяем материал любого меша с текстурой (это голова) на однотонный серый.
+	for m in _model.find_children("*", "MeshInstance3D", true, false):
+		var mat: Material = m.get_active_material(0)
+		if mat and mat is StandardMaterial3D and (mat as StandardMaterial3D).albedo_texture != null:
+			var gray := StandardMaterial3D.new()
+			gray.albedo_color = Color(0.76, 0.76, 0.79)
+			gray.roughness = 0.9
+			m.material_override = gray
+
 
 func _physics_process(delta: float) -> void:
 	if not is_instance_valid(_player):
