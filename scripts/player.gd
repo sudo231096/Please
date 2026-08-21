@@ -19,6 +19,7 @@ var hp := 100.0
 var damage := 34.0
 var _punch_t := 0.0
 var _punch_cd := 0.0
+var _punch_side := 1.0
 var _invuln := 0.0
 var _model: Node3D
 var _finish_limit := -10000.0
@@ -136,7 +137,8 @@ func _nearest_enemy() -> Node3D:
 
 func _punch() -> void:
 	_punch_cd = MELEE_CD
-	_punch_t = 0.22
+	_punch_t = 0.26
+	_punch_side = -_punch_side  # чередуем левую/правую
 	# бьём всех врагов в радиусе
 	for e in get_tree().get_nodes_in_group("enemies"):
 		var en := e as Node3D
@@ -148,13 +150,23 @@ func _punch() -> void:
 func _animate_punch(delta: float) -> void:
 	if _punch_t > 0.0:
 		_punch_t -= delta
-		var k := _punch_t / 0.22  # 1 -> 0
-		# выпад вперёд при ударе
-		_model.position.z = MODEL_OFFSET.z - k * 0.5
-		_model.rotation_degrees.x = -k * 12.0
+		var k := _punch_t / 0.26  # 1 -> 0 (от замаха к удару)
+		# замах назад (первая фаза) -> выпад вперёд (вторая фаза)
+		if k > 0.8:
+			# ветерок: отводим корпус назад
+			var wind := (k - 0.8) / 0.2
+			_model.position.z = MODEL_OFFSET.z + wind * 0.25
+			_model.rotation_degrees.x = wind * 8.0
+		else:
+			# удар: выпад вперёд + наклон + разворот корпуса
+			var kk := 1.0 - k / 0.8
+			_model.position.z = MODEL_OFFSET.z - kk * 0.8
+			_model.rotation_degrees.x = -kk * 24.0
+			_model.rotation_degrees.y = MODEL_YAW + _punch_side * kk * 26.0
 	else:
 		_model.position.z = MODEL_OFFSET.z
 		_model.rotation_degrees.x = 0.0
+		_model.rotation_degrees.y = MODEL_YAW
 
 
 func take_damage(amount: float, from: Node = null, knock: float = 0.0) -> void:

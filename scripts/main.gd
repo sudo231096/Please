@@ -133,6 +133,22 @@ func _build_walls() -> void:
 	_wall(Vector3(0.5, 4.0, len), Vector3(WALL_X, 2.0, -len * 0.5))
 
 
+func _cyl(r: float, h: float, color: Color, parent: Node3D) -> MeshInstance3D:
+	var m := MeshInstance3D.new()
+	var cm := CylinderMesh.new()
+	cm.top_radius = r
+	cm.bottom_radius = r
+	cm.height = h
+	cm.radial_segments = 16
+	m.mesh = cm
+	var mat := StandardMaterial3D.new()
+	mat.albedo_color = color
+	mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	m.material_override = mat
+	parent.add_child(m)
+	return m
+
+
 func _wall(size: Vector3, pos: Vector3) -> void:
 	var w := StaticBody3D.new()
 	w.collision_layer = 1
@@ -180,18 +196,30 @@ func _spawn_chunk() -> void:
 func _building(parent: Node3D, side: int, z: float) -> void:
 	var h := _road_rng.randf_range(6.0, 15.0)
 	var xc := side * 9.5
+	var w := 6.5
+	var d := CHUNK_LEN - 1.0
 	var base := Color(_road_rng.randf_range(0.25, 0.5), _road_rng.randf_range(0.22, 0.4), _road_rng.randf_range(0.2, 0.35))
-	_box(Vector3(6.5, h, CHUNK_LEN - 1.0), Vector3(xc, h * 0.5, -CHUNK_LEN * 0.5), base, parent)
+	# корпус
+	_box(Vector3(w, h, d), Vector3(xc, h * 0.5, -CHUNK_LEN * 0.5), base, parent)
+	# крыша-парапет (выступ по периметру)
+	_box(Vector3(w + 0.4, 0.5, d + 0.4), Vector3(xc, h + 0.25, -CHUNK_LEN * 0.5), base.darkened(0.35), parent)
+	# входная дверь
+	var door_x := side * (xc - side * 1.2)
+	_box(Vector3(1.1, 2.0, 0.1), Vector3(door_x, 1.0, -CHUNK_LEN * 0.5 + side * (d * 0.5 - 0.05)), Color(0.2, 0.12, 0.08), parent)
 
+	# окна с рамами (обращены к улице)
 	var win_color := Color(1.0, 0.9, 0.5) if _road_rng.randf() < 0.3 else Color(0.75, 0.85, 1.0)
 	var rows := int(h / 2.6)
 	for r in range(rows):
-		var wy := 1.8 + r * 2.6
-		if wy > h - 1.2:
+		var wy := 2.4 + r * 2.6
+		if wy > h - 1.0:
 			break
 		for c in range(2):
 			var wz := -CHUNK_LEN * 0.25 + c * CHUNK_LEN * 0.5
-			_box(Vector3(0.1, 1.3, 1.1), Vector3(side * (xc - side * 3.2), wy, wz), Color(0.1, 0.12, 0.16), parent, win_color)
+			var fx := side * (xc - side * 3.2)
+			# рама (тёмная, чуть больше) + стекло
+			_box(Vector3(0.1, 1.5, 1.3), Vector3(fx, wy, wz), Color(0.25, 0.25, 0.3), parent)
+			_box(Vector3(0.06, 1.25, 1.05), Vector3(fx - side * 0.03, wy, wz), Color(0.1, 0.12, 0.16), parent, win_color)
 
 
 func _streetlight(parent: Node3D, side: int, z: float) -> void:
@@ -205,8 +233,19 @@ func _car(parent: Node3D, z: float) -> void:
 	var side := -1 if _road_rng.randf() < 0.5 else 1
 	var x := side * (ROAD_HALF - 1.6)
 	var c := Color(_road_rng.randf_range(0.1, 0.9), _road_rng.randf_range(0.1, 0.9), _road_rng.randf_range(0.1, 0.9))
-	_box(Vector3(2.0, 1.0, 3.6), Vector3(x, 0.5, z), c, parent)
-	_box(Vector3(1.8, 0.7, 1.6), Vector3(x, 1.05, z - 0.4), Color(0.15, 0.18, 0.22), parent)
+	# кузов
+	_box(Vector3(2.0, 0.9, 3.6), Vector3(x, 0.5, z), c, parent)
+	# кабина
+	_box(Vector3(1.8, 0.6, 1.7), Vector3(x, 1.05, z - 0.3), Color(0.15, 0.18, 0.22), parent)
+	# фары
+	_box(Vector3(0.4, 0.2, 0.1), Vector3(x - 0.6, 0.45, z - 1.8), Color(1.0, 0.95, 0.6), parent, Color(1.0, 0.95, 0.5))
+	_box(Vector3(0.4, 0.2, 0.1), Vector3(x + 0.6, 0.45, z - 1.8), Color(1.0, 0.95, 0.6), parent, Color(1.0, 0.95, 0.5))
+	# колёса
+	for wx in [x - 0.85, x + 0.85]:
+		for wz in [z - 1.3, z + 1.2]:
+			var wheel := _cyl(0.34, 0.3, Color(0.08, 0.08, 0.09), parent)
+			wheel.rotation_degrees = Vector3(0, 0, 90)
+			wheel.position = Vector3(wx, 0.34, wz)
 
 
 func _build_finish() -> void:
@@ -268,7 +307,14 @@ func _spawn_enemies() -> void:
 		var x := _road_rng.randf_range(-ROAD_HALF + 0.8, ROAD_HALF - 0.8)
 		e.position = Vector3(x, 0, z)
 		add_child(e)
-		e.setup(_level)
+		# разновидность: с ростом уровня чаще «быстрый» и «танк»
+		var r := _road_rng.randf()
+		var v := 0
+		if _level >= 5 and r < 0.2:
+			v = 1  # быстрый
+		elif _level >= 8 and r < 0.32:
+			v = 2  # танк
+		e.set_variant(v, _level)
 		e.died.connect(_on_enemy_died)
 
 

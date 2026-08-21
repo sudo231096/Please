@@ -323,10 +323,10 @@ func _build_shop(layer: CanvasLayer) -> void:
 	panel.anchor_right = 0.5
 	panel.anchor_top = 0.5
 	panel.anchor_bottom = 0.5
-	panel.offset_left = -300
-	panel.offset_right = 300
-	panel.offset_top = -280
-	panel.offset_bottom = 280
+	panel.offset_left = -340
+	panel.offset_right = 340
+	panel.offset_top = -400
+	panel.offset_bottom = 400
 	_shop.add_child(panel)
 
 	var v := VBoxContainer.new()
@@ -351,12 +351,13 @@ func _build_shop(layer: CanvasLayer) -> void:
 
 	_dmg_lbl = Label.new()
 	_dmg_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	_dmg_lbl.add_theme_font_size_override("font_size", 20)
+	_dmg_lbl.add_theme_font_size_override("font_size", 28)
 	v.add_child(_dmg_lbl)
 
 	_dmg_btn = Button.new()
 	_dmg_btn.focus_mode = Control.FOCUS_NONE
-	_dmg_btn.add_theme_font_size_override("font_size", 22)
+	_dmg_btn.add_theme_font_size_override("font_size", 44)
+	_dmg_btn.custom_minimum_size = Vector2(560, 96)
 	_dmg_btn.pressed.connect(func() -> void:
 		GameState.buy_damage()
 		_refresh_shop()
@@ -368,12 +369,13 @@ func _build_shop(layer: CanvasLayer) -> void:
 
 	_hp_lbl = Label.new()
 	_hp_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	_hp_lbl.add_theme_font_size_override("font_size", 20)
+	_hp_lbl.add_theme_font_size_override("font_size", 28)
 	v.add_child(_hp_lbl)
 
 	_hp_btn = Button.new()
 	_hp_btn.focus_mode = Control.FOCUS_NONE
-	_hp_btn.add_theme_font_size_override("font_size", 22)
+	_hp_btn.add_theme_font_size_override("font_size", 44)
+	_hp_btn.custom_minimum_size = Vector2(560, 96)
 	_hp_btn.pressed.connect(func() -> void:
 		GameState.buy_hp()
 		_refresh_shop()
