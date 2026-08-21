@@ -24,6 +24,7 @@ var contact_dmg := 15
 var _player: Node3D
 var _model: Node3D
 var _hit_cd := 0.0
+var _stunned := 0.0
 
 signal died
 
@@ -97,11 +98,29 @@ func _build() -> void:
 			m.material_override = gray
 
 
+func stun(duration: float) -> void:
+	_stunned = maxf(_stunned, duration)
+
+
+func knockback(dir: Vector3, force: float) -> void:
+	dir.y = 0.0
+	if dir.length() > 0.01:
+		velocity += dir.normalized() * force
+
+
 func _physics_process(delta: float) -> void:
 	if not is_instance_valid(_player):
 		_player = get_tree().get_first_node_in_group("player")
 		if not _player:
 			return
+
+	# оглушён — стоим на месте
+	if _stunned > 0.0:
+		_stunned -= delta
+		velocity.x = 0.0
+		velocity.z = 0.0
+		move_and_slide()
+		return
 
 	# если отстал далеко позади игрока — исчезаем
 	if global_position.z > _player.global_position.z + 35.0:

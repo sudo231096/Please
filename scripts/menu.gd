@@ -19,6 +19,8 @@ var _hp_btn: Button
 var _promo: Control
 var _promo_input: LineEdit
 var _promo_status: Label
+var _hero_btns := {}
+var _hero_info_l: Label
 
 
 func _ready() -> void:
@@ -60,33 +62,12 @@ func _build_world() -> void:
 	dl.light_energy = 1.2
 	add_child(dl)
 
-	var g := MeshInstance3D.new()
-	var pm := PlaneMesh.new()
-	pm.size = Vector2(60, 60)
-	g.mesh = pm
-	var gmat := StandardMaterial3D.new()
-	gmat.albedo_color = Color(0.22, 0.24, 0.26)
-	gmat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
-	g.material_override = gmat
-	g.position = Vector3(0, -0.01, 0)
-	add_child(g)
-
-	_box(Vector3(10, 0.04, 40), Vector3(0, 0.02, 0), Color(0.14, 0.14, 0.16), self)
-
-	var rng := RandomNumberGenerator.new()
-	rng.seed = 1234
-	for i in range(8):
-		var side := -1 if i % 2 == 0 else 1
-		var z := -18.0 + (i * 4.5)
-		var h := rng.randf_range(6.0, 14.0)
-		var xc := side * 9.5
-		var base := Color(rng.randf_range(0.25, 0.5), rng.randf_range(0.22, 0.4), rng.randf_range(0.2, 0.35))
-		_box(Vector3(6.5, h, 4.0), Vector3(xc, h * 0.5, z), base, self)
-		for r in range(3):
-			var wy := 2.0 + r * 2.6
-			if wy > h - 1.0:
-				break
-			_box(Vector3(0.1, 1.3, 1.0), Vector3(side * (xc - side * 3.2), wy, z), Color(0.1, 0.12, 0.16), self, Color(1.0, 0.9, 0.5))
+	# скачанная карта (японский городской квартал) как фон меню
+	var map_scene: PackedScene = preload("res://models/map_japan.glb")
+	var map := map_scene.instantiate()
+	map.scale = Vector3.ONE * 0.6
+	map.position = Vector3(0, 0, -8)
+	add_child(map)
 
 	_cameraman = Node3D.new()
 	_cameraman.set_script(CameramanIdle)
@@ -213,6 +194,51 @@ func _build_ui() -> void:
 		_start(GameState.unlocked)
 	)
 	layer.add_child(play)
+
+	# --- выбор героя ---
+	var hero_label := Label.new()
+	hero_label.text = "Выбери героя"
+	hero_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	hero_label.anchor_left = 0.3
+	hero_label.anchor_right = 0.7
+	hero_label.offset_top = 265
+	hero_label.offset_bottom = 295
+	hero_label.add_theme_font_size_override("font_size", 20)
+	hero_label.modulate = Color(0.9, 0.9, 0.9, 0.85)
+	layer.add_child(hero_label)
+
+	var hero_row := HBoxContainer.new()
+	hero_row.anchor_left = 0.5
+	hero_row.anchor_right = 0.5
+	hero_row.offset_left = -330
+	hero_row.offset_right = 330
+	hero_row.offset_top = 300
+	hero_row.offset_bottom = 380
+	hero_row.add_theme_constant_override("separation", 12)
+	layer.add_child(hero_row)
+
+	for i in range(3):
+		var b := Button.new()
+		b.focus_mode = Control.FOCUS_NONE
+		b.add_theme_font_size_override("font_size", 24)
+		b.custom_minimum_size = Vector2(210, 80)
+		var hid := i
+		b.pressed.connect(func() -> void:
+			GameState.select_hero(hid)
+			_refresh_heroes()
+		)
+		_hero_btns[hid] = b
+		hero_row.add_child(b)
+
+	_hero_info_l = Label.new()
+	_hero_info_l.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_hero_info_l.anchor_left = 0.2
+	_hero_info_l.anchor_right = 0.8
+	_hero_info_l.offset_top = 388
+	_hero_info_l.offset_bottom = 430
+	_hero_info_l.add_theme_font_size_override("font_size", 20)
+	_hero_info_l.modulate = Color(0.7, 0.9, 1.0)
+	layer.add_child(_hero_info_l)
 
 	# --- горизонтальная лента уровней (внизу) ---
 	var strip_scroll := ScrollContainer.new()
@@ -397,6 +423,7 @@ func _refresh() -> void:
 		c.queue_free()
 	_unlocked_l.text = "Открыто уровней: %d / %d" % [GameState.unlocked, MAX_LEVEL]
 	_coins_l.text = "Монеты: %d" % GameState.coins
+	_refresh_heroes()
 
 	for i in range(1, MAX_LEVEL + 1):
 		var b := Button.new()
@@ -434,6 +461,21 @@ func _refresh_shop() -> void:
 	if _hp_btn:
 		_hp_btn.text = "Прокачать HP — %d" % GameState.hp_upgrade_cost()
 		_hp_btn.disabled = GameState.coins < GameState.hp_upgrade_cost()
+
+
+func _refresh_heroes() -> void:
+	var names := ["Камерамен", "Спикер-мен", "ТВ-мен"]
+	var supers := ["Вспышка: оглушает врагов", "Звуковая волна: урон + отброс", "Луч из экрана: мощный урон"]
+	for i in range(3):
+		var b: Button = _hero_btns[i]
+		if GameState.selected_hero == i:
+			b.text = names[i] + "\n✓"
+			b.modulate = Color(0.6, 1.0, 0.6)
+		else:
+			b.text = names[i]
+			b.modulate = Color.WHITE
+	if _hero_info_l:
+		_hero_info_l.text = "Суперсила: " + supers[GameState.selected_hero]
 
 
 func _start(level: int) -> void:

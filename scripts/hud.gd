@@ -13,6 +13,7 @@ var _flash_l: Label
 var _flash_t := 0.0
 var _over: Control
 var _over_score: Label
+var _super_btn: Button
 
 
 func bind(p: Node3D) -> void:
@@ -126,7 +127,7 @@ func _build() -> void:
 	add_child(joy)
 	joy.dir_changed.connect(_on_joy)
 
-	# кнопка стрельбы
+	# кнопка удара
 	var fire := Button.new()
 	fire.text = "УДАР"
 	fire.focus_mode = Control.FOCUS_NONE
@@ -142,6 +143,26 @@ func _build() -> void:
 	fire.button_down.connect(func() -> void: _set_fire(true))
 	fire.button_up.connect(func() -> void: _set_fire(false))
 	add_child(fire)
+
+	# кнопка суперсилы
+	_super_btn = Button.new()
+	_super_btn.text = "СУПЕР"
+	_super_btn.focus_mode = Control.FOCUS_NONE
+	_super_btn.anchor_left = 1.0
+	_super_btn.anchor_right = 1.0
+	_super_btn.anchor_top = 1.0
+	_super_btn.anchor_bottom = 1.0
+	_super_btn.offset_left = -190
+	_super_btn.offset_right = -40
+	_super_btn.offset_top = -280
+	_super_btn.offset_bottom = -190
+	_super_btn.add_theme_font_size_override("font_size", 24)
+	_super_btn.modulate = Color(0.6, 0.7, 1.0)
+	_super_btn.pressed.connect(func() -> void:
+		if _player:
+			_player.set_meta("mob_super", true)
+	)
+	add_child(_super_btn)
 
 	# экран проигрыша
 	_over = Control.new()
@@ -216,6 +237,15 @@ func _process(delta: float) -> void:
 		_flash_l.modulate.a = minf(1.0, _flash_t * 2.0)
 		if _flash_t <= 0.0:
 			_flash_l.visible = false
+	# перезарядка суперсилы
+	if _super_btn and _player:
+		var cd: float = _player._super_cd
+		if cd > 0.0:
+			_super_btn.text = "СУПЕР %.1f" % cd
+			_super_btn.disabled = true
+		else:
+			_super_btn.text = "СУПЕР"
+			_super_btn.disabled = false
 
 
 func _on_joy(dir: Vector2) -> void:

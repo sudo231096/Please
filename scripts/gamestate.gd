@@ -20,6 +20,7 @@ var coins := 0
 var damage_level := 0
 var hp_level := 0
 var promo_redeemed := false
+var selected_hero := 0  # 0 = камерамен, 1 = спикер-мен, 2 = ТВ-мен
 
 
 func _ready() -> void:
@@ -35,6 +36,7 @@ func load_data() -> void:
 		damage_level = int(cfg.get_value("g", "damage_level", 0))
 		hp_level = int(cfg.get_value("g", "hp_level", 0))
 		promo_redeemed = bool(cfg.get_value("g", "promo_redeemed", false))
+		selected_hero = int(cfg.get_value("g", "selected_hero", 0))
 
 
 func save_data() -> void:
@@ -45,6 +47,7 @@ func save_data() -> void:
 	cfg.set_value("g", "damage_level", damage_level)
 	cfg.set_value("g", "hp_level", hp_level)
 	cfg.set_value("g", "promo_redeemed", promo_redeemed)
+	cfg.set_value("g", "selected_hero", selected_hero)
 	cfg.save(SAVE_PATH)
 
 
@@ -106,6 +109,11 @@ func player_damage() -> float:
 
 func player_max_hp() -> float:
 	return float(BASE_MAX_HP + hp_level * HP_PER_LEVEL)
+
+
+func select_hero(id: int) -> void:
+	selected_hero = clampi(id, 0, 2)
+	save_data()
 
 
 # --- промокод ---
