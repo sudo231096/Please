@@ -12,6 +12,10 @@ const HP_PER_LEVEL := 15
 const PROMO_CODE := "SKIBIDI"
 const PROMO_REWARD := 1000000
 
+# стоимость героев (0 = камерамен бесплатно)
+const HERO_COST := {1: 5000, 2: 10000}
+const HERO_NAMES := ["Камерамен", "Спикер-мен", "ТВ-мен"]
+
 var high_score := 0
 var score := 0
 var unlocked := 1   # сколько уровней открыто
@@ -21,6 +25,7 @@ var damage_level := 0
 var hp_level := 0
 var promo_redeemed := false
 var selected_hero := 0  # 0 = камерамен, 1 = спикер-мен, 2 = ТВ-мен
+var owned_heroes := {0: true, 1: false, 2: false}
 
 
 func _ready() -> void:
@@ -37,6 +42,8 @@ func load_data() -> void:
 		hp_level = int(cfg.get_value("g", "hp_level", 0))
 		promo_redeemed = bool(cfg.get_value("g", "promo_redeemed", false))
 		selected_hero = int(cfg.get_value("g", "selected_hero", 0))
+		for k in [1, 2]:
+			owned_heroes[k] = bool(cfg.get_value("g", "hero_" + str(k), false))
 
 
 func save_data() -> void:
@@ -48,6 +55,8 @@ func save_data() -> void:
 	cfg.set_value("g", "hp_level", hp_level)
 	cfg.set_value("g", "promo_redeemed", promo_redeemed)
 	cfg.set_value("g", "selected_hero", selected_hero)
+	for k in [1, 2]:
+		cfg.set_value("g", "hero_" + str(k), owned_heroes[k])
 	cfg.save(SAVE_PATH)
 
 
@@ -114,6 +123,19 @@ func player_max_hp() -> float:
 func select_hero(id: int) -> void:
 	selected_hero = clampi(id, 0, 2)
 	save_data()
+
+
+func buy_hero(id: int) -> bool:
+	if id == 0 or owned_heroes.has(id) and owned_heroes[id]:
+		return false
+	var cost: int = HERO_COST.get(id, 0)
+	if coins >= cost:
+		coins -= cost
+		owned_heroes[id] = true
+		selected_hero = id
+		save_data()
+		return true
+	return false
 
 
 # --- промокод ---

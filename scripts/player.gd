@@ -136,9 +136,11 @@ func _nearest_enemy() -> Node3D:
 	return best
 
 
+const PUNCH_TIME := 0.36
+
 func _punch() -> void:
 	_punch_cd = MELEE_CD
-	_punch_t = 0.28
+	_punch_t = PUNCH_TIME
 	_punch_side = -_punch_side
 	for e in get_tree().get_nodes_in_group("enemies"):
 		var en := e as Node3D
@@ -180,21 +182,38 @@ func _use_super() -> void:
 func _animate_punch(delta: float) -> void:
 	if _punch_t > 0.0:
 		_punch_t -= delta
-		var k := _punch_t / 0.28  # 1 -> 0
-		# замах -> удар с разворотом корпуса и наклоном
-		if k > 0.85:
-			var wind := (k - 0.85) / 0.15
-			_model.position.z = _model_offset.z + wind * 0.3
-			_model.rotation_degrees.x = wind * 6.0
+		var t := 1.0 - _punch_t / PUNCH_TIME  # 0 -> 1
+		var lean := 0.0    # наклон корпуса (вперёд = отрицательный)
+		var lunge := 0.0   # сдвиг вперёд (отрицательный = к врагу)
+		var roll := 0.0    # лёгкий крен
+		if t < 0.30:
+			# фаза замаха: плавно отводим корпус назад и чуть наклоняемся
+			var w := t / 0.30
+			var s := sin(w * PI * 0.5)
+			lean = s * 12.0
+			lunge = s * 0.35
+			roll = s * 6.0 * _punch_side
+		elif t < 0.55:
+			# фаза удара: резкий выпад вперёд
+			var w := (t - 0.30) / 0.25
+			var s := sin(w * PI * 0.5)
+			lean = 12.0 - s * 30.0
+			lunge = 0.35 - s * 1.1
+			roll = 6.0 * _punch_side - s * 10.0 * _punch_side
 		else:
-			var kk := 1.0 - k / 0.85
-			_model.position.z = _model_offset.z - kk * 0.9
-			_model.rotation_degrees.x = -kk * 30.0
-			_model.rotation_degrees.y = (HEROES[hero]["yaw"] as float) + _punch_side * kk * 34.0
+			# фаза возврата: плавно в исходную позу
+			var w := (t - 0.55) / 0.45
+			var s := sin(w * PI * 0.5)
+			lean = -18.0 * (1.0 - s)
+			lunge = -0.75 * (1.0 - s)
+			roll = -4.0 * _punch_side * (1.0 - s)
+		_model.rotation_degrees.x = lean
+		_model.rotation_degrees.z = roll
+		_model.position.z = _model_offset.z + lunge
 	else:
 		_model.position.z = _model_offset.z
 		_model.rotation_degrees.x = 0.0
-		_model.rotation_degrees.y = HEROES[hero]["yaw"] as float
+		_model.rotation_degrees.z = 0.0
 
 
 func take_damage(amount: float, from: Node = null, knock: float = 0.0) -> void:

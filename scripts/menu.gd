@@ -62,12 +62,33 @@ func _build_world() -> void:
 	dl.light_energy = 1.2
 	add_child(dl)
 
+	# дорога (асфальт) под всем
+	var road := MeshInstance3D.new()
+	var pm := PlaneMesh.new()
+	pm.size = Vector2(60, 60)
+	road.mesh = pm
+	var rmat := StandardMaterial3D.new()
+	rmat.albedo_color = Color(0.15, 0.15, 0.17)
+	rmat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	road.material_override = rmat
+	road.position = Vector3(0, 0.005, -8)
+	add_child(road)
+
+	# разметка — прерывистая осевая линия
+	for i in range(12):
+		_box(Vector3(0.14, 0.02, 2.0), Vector3(0, 0.02, -20 + i * 4.0), Color(0.85, 0.85, 0.4), self)
+
 	# скачанная карта (японский городской квартал) как фон меню
 	var map_scene: PackedScene = preload("res://models/map_japan.glb")
 	var map := map_scene.instantiate()
 	map.scale = Vector3.ONE * 0.6
 	map.position = Vector3(0, 0, -8)
 	add_child(map)
+	# скрываем плавающие плиты-«землю» внутри модели (у неё нет нормальной дороги)
+	for m in map.find_children("*", "MeshInstance3D", true, false):
+		var aabb: AABB = m.mesh.get_aabb()
+		if aabb.size.x > 80.0 and aabb.size.y > 80.0 and aabb.size.z < 3.0:
+			m.visible = false
 
 	_cameraman = Node3D.new()
 	_cameraman.set_script(CameramanIdle)
@@ -224,8 +245,7 @@ func _build_ui() -> void:
 		b.custom_minimum_size = Vector2(210, 80)
 		var hid := i
 		b.pressed.connect(func() -> void:
-			GameState.select_hero(hid)
-			_refresh_heroes()
+			_on_hero_pressed(hid)
 		)
 		_hero_btns[hid] = b
 		hero_row.add_child(b)
@@ -463,16 +483,29 @@ func _refresh_shop() -> void:
 		_hp_btn.disabled = GameState.coins < GameState.hp_upgrade_cost()
 
 
+func _on_hero_pressed(id: int) -> void:
+	if id == 0 or (GameState.owned_heroes.has(id) and GameState.owned_heroes[id]):
+		GameState.select_hero(id)
+	else:
+		if GameState.buy_hero(id):
+			pass  # куплен и выбран
+	_refresh_heroes()
+	_refresh_shop()
+
+
 func _refresh_heroes() -> void:
-	var names := ["Камерамен", "Спикер-мен", "ТВ-мен"]
 	var supers := ["Вспышка: оглушает врагов", "Звуковая волна: урон + отброс", "Луч из экрана: мощный урон"]
 	for i in range(3):
 		var b: Button = _hero_btns[i]
-		if GameState.selected_hero == i:
-			b.text = names[i] + "\n✓"
+		var owned: bool = GameState.owned_heroes.has(i) and GameState.owned_heroes[i]
+		if not owned:
+			b.text = "%s\n%d монет" % [GameState.HERO_NAMES[i], GameState.HERO_COST[i]]
+			b.modulate = Color(1.0, 0.75, 0.35) if GameState.coins >= GameState.HERO_COST[i] else Color(0.5, 0.5, 0.5)
+		elif GameState.selected_hero == i:
+			b.text = GameState.HERO_NAMES[i] + "\n✓"
 			b.modulate = Color(0.6, 1.0, 0.6)
 		else:
-			b.text = names[i]
+			b.text = GameState.HERO_NAMES[i]
 			b.modulate = Color.WHITE
 	if _hero_info_l:
 		_hero_info_l.text = "Суперсила: " + supers[GameState.selected_hero]
