@@ -16,6 +16,11 @@ const HEROES := [
 const HERO_NAMES := ["Камерамен", "Спикер-мен", "ТВ-мен"]
 const HERO_SUPER := ["Вспышка (оглушение)", "Звуковая волна", "Луч из экрана"]
 
+const PUNCH_TIME := 0.42
+# целевые повороты костей (в костном локальном пространстве, откалиброваны в игре): кулак вперёд
+const PUNCH_R := Vector3(deg_to_rad(90.0), deg_to_rad(-90.0), 0.0)
+const PUNCH_L := Vector3(deg_to_rad(90.0), deg_to_rad(90.0), 0.0)
+
 var max_hp := 100.0
 var hp := 100.0
 var damage := 34.0
@@ -29,6 +34,12 @@ var _model: Node3D
 var _model_offset := Vector3.ZERO
 var _finish_limit := -10000.0
 var hero := 0
+
+# кости для анимации удара (заполняются, если у героя есть скелет)
+var _skel: Skeleton3D
+var _bone_r_arm := -1
+var _bone_l_arm := -1
+var _bone_spine2 := -1
 
 signal died
 signal hp_changed(hp: float, max_hp: float)
@@ -61,6 +72,21 @@ func _build() -> void:
 	_model.rotation_degrees = Vector3(0, cfg["yaw"], 0)
 	_model.position = _model_offset
 	add_child(_model)
+
+	# ищем скелет и нужные кости (руки, корпус)
+	_skel = null
+	for n in _model.find_children("*", "Skeleton3D", true, false):
+		_skel = n
+		break
+	if _skel:
+		for b in range(_skel.get_bone_count()):
+			var nm := String(_skel.get_bone_name(b))
+			if nm.begins_with("mixamorig_RightArm_"):
+				_bone_r_arm = b
+			elif nm.begins_with("mixamorig_LeftArm_"):
+				_bone_l_arm = b
+			elif nm.begins_with("mixamorig_Spine2_"):
+				_bone_spine2 = b
 
 
 func _physics_process(delta: float) -> void:
@@ -136,8 +162,6 @@ func _nearest_enemy() -> Node3D:
 	return best
 
 
-const PUNCH_TIME := 0.36
-
 func _punch() -> void:
 	_punch_cd = MELEE_CD
 	_punch_t = PUNCH_TIME
@@ -183,37 +207,36 @@ func _animate_punch(delta: float) -> void:
 	if _punch_t > 0.0:
 		_punch_t -= delta
 		var t := 1.0 - _punch_t / PUNCH_TIME  # 0 -> 1
-		var lean := 0.0    # наклон корпуса (вперёд = отрицательный)
-		var lunge := 0.0   # сдвиг вперёд (отрицательный = к врагу)
-		var roll := 0.0    # лёгкий крен
-		if t < 0.30:
-			# фаза замаха: плавно отводим корпус назад и чуть наклоняемся
-			var w := t / 0.30
-			var s := sin(w * PI * 0.5)
-			lean = s * 12.0
-			lunge = s * 0.35
-			roll = s * 6.0 * _punch_side
-		elif t < 0.55:
-			# фаза удара: резкий выпад вперёд
-			var w := (t - 0.30) / 0.25
-			var s := sin(w * PI * 0.5)
-			lean = 12.0 - s * 30.0
-			lunge = 0.35 - s * 1.1
-			roll = 6.0 * _punch_side - s * 10.0 * _punch_side
+		var env := 0.0
+		if t < 0.18:
+			# замах: рука плавно отводится назад
+			env = -0.15 * sin(t / 0.18 * PI * 0.5)
+		elif t < 0.45:
+			# удар: резкий выброс кулака вперёд
+			var w := (t - 0.18) / 0.27
+			env = lerp(-0.15, 1.0, smoothstep(0.0, 1.0, w))
 		else:
-			# фаза возврата: плавно в исходную позу
-			var w := (t - 0.55) / 0.45
-			var s := sin(w * PI * 0.5)
-			lean = -18.0 * (1.0 - s)
-			lunge = -0.75 * (1.0 - s)
-			roll = -4.0 * _punch_side * (1.0 - s)
-		_model.rotation_degrees.x = lean
-		_model.rotation_degrees.z = roll
-		_model.position.z = _model_offset.z + lunge
+			# возврат в стойку
+			var w := (t - 0.45) / 0.55
+			env = lerp(1.0, 0.0, smoothstep(0.0, 1.0, w))
+		_apply_punch(env)
 	else:
-		_model.position.z = _model_offset.z
-		_model.rotation_degrees.x = 0.0
-		_model.rotation_degrees.z = 0.0
+		_apply_punch(0.0)
+
+
+func _apply_punch(env: float) -> void:
+	if _skel == null:
+		return
+	# рука: правая или левая бьёт (в зависимости от _punch_side), ноги не трогаем
+	if _punch_side > 0.0 and _bone_r_arm >= 0:
+		_skel.set_bone_pose_rotation(_bone_r_arm, Quaternion.from_euler(PUNCH_R * env))
+	elif _bone_l_arm >= 0:
+		_skel.set_bone_pose_rotation(_bone_l_arm, Quaternion.from_euler(PUNCH_L * env))
+	# корпус: лёгкий разворот вперёд (верх тела, ноги остаются на месте — они от Hips)
+	if _bone_spine2 >= 0:
+		var tw := maxf(env, 0.0)
+		_skel.set_bone_pose_rotation(_bone_spine2, Quaternion.from_euler(Vector3(-tw * 0.12, _punch_side * tw * 0.25, 0.0)))
+	_skel.force_update_all_bone_transforms()
 
 
 func take_damage(amount: float, from: Node = null, knock: float = 0.0) -> void:
