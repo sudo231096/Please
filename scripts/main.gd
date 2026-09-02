@@ -1,12 +1,11 @@
 extends Node3D
-## Пустошь в духе Rust: от первого лица, деревья/камни/трава, дикие звери.
+## Пустошь в духе Rust: выживание от первого лица.
 
 const PlayerScr := preload("res://scripts/player.gd")
-const EnemyScr := preload("res://scripts/enemy.gd")
+const AnimalScr := preload("res://scripts/animal.gd")
 const HudScr := preload("res://scripts/hud.gd")
 
-const AREA := 60.0
-const ENEMY_COUNT := 6
+const AREA := 90.0  # большая карта
 
 var _player: CharacterBody3D
 var _hud: CanvasLayer
@@ -22,10 +21,8 @@ func _ready() -> void:
 	_build_grass()
 	_spawn_player()
 	_build_hud()
-	_spawn_enemies()
+	_spawn_animals()
 
-
-# ---------- окружение ----------
 
 func _mat(color: Color, emissive := Color(0, 0, 0, 0)) -> StandardMaterial3D:
 	var m := StandardMaterial3D.new()
@@ -48,13 +45,11 @@ func _build_sky() -> void:
 	we.environment = env
 	add_child(we)
 
-	# солнце (свет)
 	var sun := DirectionalLight3D.new()
 	sun.rotation_degrees = Vector3(-50, 40, 0)
 	sun.light_energy = 1.3
 	sun.shadow_enabled = true
 	add_child(sun)
-	# видимый диск солнца
 	var disc := MeshInstance3D.new()
 	var sm := SphereMesh.new()
 	sm.radius = 6.0
@@ -81,22 +76,19 @@ func _build_ground() -> void:
 	var pm := PlaneMesh.new()
 	pm.size = Vector2(AREA * 2, AREA * 2)
 	m.mesh = pm
-	m.material_override = _mat(Color(0.36, 0.3, 0.2))  # сухая земля
+	m.material_override = _mat(Color(0.36, 0.3, 0.2))
 	m.position = Vector3(0, -0.01, 0)
 	add_child(m)
 
 
 func _build_trees() -> void:
-	for i in range(24):
-		var x := _rng.randf_range(-AREA + 3, AREA - 3)
-		var z := _rng.randf_range(-AREA + 3, AREA - 3)
-		if Vector2(x, z).length() < 8.0:
-			continue  # не на спавне игрока
-		_tree(Vector3(x, 0, z))
+	for i in range(60):
+		var pos := _random_spot(8.0)
+		_tree(pos)
 
 
 func _tree(pos: Vector3) -> void:
-	var h := _rng.randf_range(3.5, 6.0)
+	var h := _rng.randf_range(3.5, 6.5)
 	var trunk := MeshInstance3D.new()
 	var cm := CylinderMesh.new()
 	cm.top_radius = 0.14
@@ -106,58 +98,58 @@ func _tree(pos: Vector3) -> void:
 	trunk.material_override = _mat(Color(0.35, 0.24, 0.12))
 	trunk.position = pos + Vector3(0, h * 0.5, 0)
 	add_child(trunk)
-
 	var crown := MeshInstance3D.new()
 	var sm := SphereMesh.new()
-	sm.radius = 1.3
-	sm.height = 2.6
+	sm.radius = 1.4
+	sm.height = 2.8
 	crown.mesh = sm
 	crown.material_override = _mat(Color(0.2, 0.38, 0.16))
-	crown.position = pos + Vector3(0, h + 0.4, 0)
+	crown.position = pos + Vector3(0, h + 0.5, 0)
 	add_child(crown)
 
 
 func _build_rocks() -> void:
-	for i in range(18):
-		var x := _rng.randf_range(-AREA + 2, AREA - 2)
-		var z := _rng.randf_range(-AREA + 2, AREA - 2)
-		if Vector2(x, z).length() < 8.0:
-			continue
-		var r := _rng.randf_range(0.4, 1.2)
+	for i in range(40):
+		var pos := _random_spot(8.0)
+		var r := _rng.randf_range(0.4, 1.5)
 		var rock := MeshInstance3D.new()
 		var sm := SphereMesh.new()
 		sm.radius = r
 		sm.height = r * 1.6
 		rock.mesh = sm
 		rock.material_override = _mat(Color(0.42, 0.42, 0.45))
-		rock.position = Vector3(x, r * 0.5, z)
+		rock.position = Vector3(pos.x, r * 0.5, pos.z)
 		rock.scale = Vector3(1, _rng.randf_range(0.5, 0.9), 1)
 		add_child(rock)
 
 
 func _build_grass() -> void:
-	for i in range(120):
-		var x := _rng.randf_range(-AREA + 1, AREA - 1)
-		var z := _rng.randf_range(-AREA + 1, AREA - 1)
-		if Vector2(x, z).length() < 8.0:
-			continue
+	for i in range(260):
+		var pos := _random_spot(8.0)
 		var blade := MeshInstance3D.new()
 		var cm := CylinderMesh.new()
 		cm.top_radius = 0.02
 		cm.bottom_radius = 0.04
-		cm.height = _rng.randf_range(0.4, 0.9)
+		cm.height = _rng.randf_range(0.4, 1.0)
 		blade.mesh = cm
 		blade.material_override = _mat(Color(0.5, 0.45, 0.2))
-		blade.position = Vector3(x, cm.height * 0.5, z)
+		blade.position = Vector3(pos.x, cm.height * 0.5, pos.z)
 		add_child(blade)
 
 
-# ---------- игрок / враги / HUD ----------
+func _random_spot(min_r: float) -> Vector3:
+	var ang := _rng.randf() * TAU
+	var r := _rng.randf_range(min_r, AREA - 2.0)
+	return Vector3(cos(ang) * r, 0, sin(ang) * r)
+
 
 func _spawn_player() -> void:
 	_player = CharacterBody3D.new()
 	_player.set_script(PlayerScr)
-	_player.position = Vector3(0, 1.0, 0)
+	# разный спавн: случайная точка на краю
+	var ang := _rng.randf() * TAU
+	var r := _rng.randf_range(20.0, AREA - 5.0)
+	_player.position = Vector3(cos(ang) * r, 1.0, sin(ang) * r)
 	add_child(_player)
 
 
@@ -168,24 +160,43 @@ func _build_hud() -> void:
 	_hud.bind(_player)
 
 
-func _spawn_enemies() -> void:
-	for i in range(ENEMY_COUNT):
-		_spawn_one()
+func _spawn_animals() -> void:
+	# курицы (много, пассивные)
+	for i in range(6):
+		_spawn_animal(0)
+	# олени (быстрые, пассивные)
+	for i in range(4):
+		_spawn_animal(1)
+	# кабаны (нейтральные)
+	for i in range(3):
+		_spawn_animal(2)
+	# медведи (агрессивные)
+	for i in range(2):
+		_spawn_animal(3)
 
 
-func _spawn_one() -> void:
-	var e := CharacterBody3D.new()
-	e.set_script(EnemyScr)
-	var ang := _rng.randf() * TAU
-	var r := _rng.randf_range(15.0, AREA - 3.0)
-	e.position = Vector3(cos(ang) * r, 1.0, sin(ang) * r)
-	add_child(e)
-	e.setup(1)
-	e.died.connect(_on_enemy_died)
+func _spawn_animal(kind: int) -> void:
+	var a := CharacterBody3D.new()
+	a.set_script(AnimalScr)
+	var pos := _random_spot(12.0)
+	a.position = Vector3(pos.x, 1.0, pos.z)
+	add_child(a)
+	a.setup(kind)
+	a.died.connect(_on_animal_died)
 
 
-func _on_enemy_died() -> void:
+func _on_animal_died(kind: int) -> void:
+	# добыча: мясо за убийство (кроме курицы — тоже даёт, но меньше)
+	var amount := 1
+	if kind == 3:  # медведь
+		amount = 4
+	elif kind == 1:  # олень
+		amount = 3
+	elif kind == 2:  # кабан
+		amount = 2
+	GameState.add_meat(amount)
+	GameState.kills += 1
 	if _hud:
-		_hud.add_kill()
-	# респавн нового зверя
-	_spawn_one()
+		_hud.refresh()
+	# респавн того же вида
+	_spawn_animal(kind)
