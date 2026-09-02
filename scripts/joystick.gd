@@ -1,5 +1,5 @@
 extends Control
-## Виртуальный джойстик.
+## Виртуальный джойстик движения.
 
 signal dir_changed(dir: Vector2)
 
