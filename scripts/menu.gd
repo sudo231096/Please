@@ -1,8 +1,6 @@
 extends Node3D
-## Главное меню: 3D-модель игрока, кнопка «Играть» справа внизу, настройки слева вверху.
+## Главное меню: 3D-модель игрока (скачанная), статичная камера, кнопка «Играть», настройки.
 
-var _cam: Camera3D
-var _angle := 0.0
 var _settings: Control
 var _sens_l: Label
 var _layout_btn: Button
@@ -10,28 +8,32 @@ var _layout_btn: Button
 
 func _ready() -> void:
 	_build_world()
+	_build_player_model()
 	_build_ui()
 
 
-func _mat(color: Color) -> StandardMaterial3D:
+func _mat(color: Color, emissive := Color(0, 0, 0, 0)) -> StandardMaterial3D:
 	var m := StandardMaterial3D.new()
 	m.albedo_color = color
 	m.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	if emissive.a > 0.0:
+		m.emission_enabled = true
+		m.emission = emissive
 	return m
 
 
-func _box(size: Vector3, pos: Vector3, color: Color, parent: Node3D) -> MeshInstance3D:
+func _box(size: Vector3, pos: Vector3, color: Color) -> MeshInstance3D:
 	var m := MeshInstance3D.new()
 	var bm := BoxMesh.new()
 	bm.size = size
 	m.mesh = bm
 	m.material_override = _mat(color)
 	m.position = pos
-	parent.add_child(m)
+	add_child(m)
 	return m
 
 
-func _sphere(r: float, pos: Vector3, color: Color, parent: Node3D) -> MeshInstance3D:
+func _sphere(r: float, pos: Vector3, color: Color) -> MeshInstance3D:
 	var m := MeshInstance3D.new()
 	var sm := SphereMesh.new()
 	sm.radius = r
@@ -39,11 +41,11 @@ func _sphere(r: float, pos: Vector3, color: Color, parent: Node3D) -> MeshInstan
 	m.mesh = sm
 	m.material_override = _mat(color)
 	m.position = pos
-	parent.add_child(m)
+	add_child(m)
 	return m
 
 
-func _cyl(r: float, h: float, color: Color, parent: Node3D) -> MeshInstance3D:
+func _cyl(r: float, h: float, color: Color) -> MeshInstance3D:
 	var m := MeshInstance3D.new()
 	var cm := CylinderMesh.new()
 	cm.top_radius = r
@@ -51,84 +53,109 @@ func _cyl(r: float, h: float, color: Color, parent: Node3D) -> MeshInstance3D:
 	cm.height = h
 	m.mesh = cm
 	m.material_override = _mat(color)
-	parent.add_child(m)
+	add_child(m)
 	return m
 
 
 func _build_world() -> void:
 	var env := Environment.new()
 	env.background_mode = Environment.BG_COLOR
-	env.background_color = Color(0.45, 0.55, 0.72)
+	env.background_color = Color(0.55, 0.68, 0.82)
 	env.ambient_light_source = Environment.AMBIENT_SOURCE_COLOR
-	env.ambient_light_color = Color(0.6, 0.62, 0.66)
+	env.ambient_light_color = Color(0.62, 0.64, 0.68)
 	env.ambient_light_energy = 1.0
 	var we := WorldEnvironment.new()
 	we.environment = env
 	add_child(we)
 
-	var dl := DirectionalLight3D.new()
-	dl.rotation_degrees = Vector3(-50, 40, 0)
-	dl.light_energy = 1.2
-	add_child(dl)
+	var sun := DirectionalLight3D.new()
+	sun.rotation_degrees = Vector3(-50, 40, 0)
+	sun.light_energy = 1.3
+	sun.shadow_enabled = true
+	add_child(sun)
+	var disc := MeshInstance3D.new()
+	var sm := SphereMesh.new()
+	sm.radius = 5.0
+	sm.height = 10.0
+	disc.mesh = sm
+	disc.material_override = _mat(Color(1.0, 0.95, 0.7), Color(1.0, 0.9, 0.5))
+	disc.position = Vector3(0, 60, -50)
+	add_child(disc)
 
 	# земля
 	var g := MeshInstance3D.new()
 	var pm := PlaneMesh.new()
-	pm.size = Vector2(40, 40)
+	pm.size = Vector2(60, 60)
 	g.mesh = pm
 	g.material_override = _mat(Color(0.36, 0.3, 0.2))
 	g.position = Vector3(0, -0.01, 0)
 	add_child(g)
 
-	# 3D-модель игрока (выживший с топором)
-	var body := Node3D.new()
-	body.position = Vector3(0, 0, -3)
-	add_child(body)
-	var navy := Color(0.25, 0.28, 0.32)
-	var skin := Color(0.8, 0.66, 0.52)
-	var jeans := Color(0.3, 0.34, 0.42)
-	# ноги
-	_box(Vector3(0.24, 0.8, 0.24), Vector3(-0.18, 0.4, 0), jeans, body)
-	_box(Vector3(0.24, 0.8, 0.24), Vector3(0.18, 0.4, 0), jeans, body)
-	# торс
-	_box(Vector3(0.6, 0.7, 0.35), Vector3(0, 1.1, 0), navy, body)
-	# руки
-	_box(Vector3(0.2, 0.6, 0.2), Vector3(-0.42, 1.1, 0), navy, body)
-	_box(Vector3(0.2, 0.6, 0.2), Vector3(0.42, 1.1, 0), navy, body)
-	# топор в правой руке
-	_box(Vector3(0.06, 0.7, 0.06), Vector3(0.5, 1.35, 0), Color(0.4, 0.28, 0.16), body)
-	_box(Vector3(0.28, 0.08, 0.06), Vector3(0.5, 1.7, 0), Color(0.6, 0.6, 0.65), body)
-	# голова
-	_sphere(0.26, Vector3(0, 1.75, 0), skin, body)
-	# шапка (бини)
-	_sphere(0.27, Vector3(0, 1.88, 0), Color(0.5, 0.2, 0.15), body)
+	# деревья на фоне
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 777
+	for i in range(12):
+		var ang := rng.randf() * TAU
+		var r := rng.randf_range(6.0, 20.0)
+		var x := cos(ang) * r
+		var z := sin(ang) * r - 4.0
+		var h := rng.randf_range(3.0, 5.5)
+		var trunk := _cyl(0.15, h, Color(0.35, 0.24, 0.12))
+		trunk.position = Vector3(x, h * 0.5, z)
+		var crown := _sphere(1.2, Vector3(x, h + 0.4, z), Color(0.2, 0.38, 0.16))
+	# камни
+	for i in range(10):
+		var ang := rng.randf() * TAU
+		var r := rng.randf_range(5.0, 16.0)
+		var rock := _sphere(rng.randf_range(0.3, 0.8), Vector3(cos(ang) * r, 0.2, sin(ang) * r - 4.0), Color(0.42, 0.42, 0.45))
 
-	_cam = Camera3D.new()
-	_cam.current = true
-	_cam.fov = 55
-	add_child(_cam)
+	# камера (статичная, смотрит на модель)
+	var cam := Camera3D.new()
+	cam.current = true
+	cam.fov = 45
+	add_child(cam)
+	cam.global_position = Vector3(0, 1.5, 2.5)
+	cam.look_at(Vector3(0, 1.1, -3.0), Vector3.UP)
 
 
-func _process(delta: float) -> void:
-	if not _cam:
-		return
-	_angle += delta * 0.3
-	var r := 4.5
-	_cam.global_position = Vector3(cos(_angle) * r, 1.6, -3 + sin(_angle) * r * 0.6)
-	_cam.look_at(Vector3(0, 1.2, -3), Vector3.UP)
+func _build_player_model() -> void:
+	var sc: PackedScene = preload("res://models/survivor.glb")
+	var model: Node3D = sc.instantiate()
+	add_child(model)
+
+	# модель в сантиметрах, лежит горизонтально -> ставим вертикально
+	model.rotation_degrees = Vector3(-90, 0, 0)
+	model.scale = Vector3.ONE * 0.01
+
+	# после кадра измерим габариты и поставим на землю
+	await get_tree().process_frame
+	await get_tree().process_frame
+	var mn := Vector3(1e9, 1e9, 1e9)
+	var mx := Vector3(-1e9, -1e9, -1e9)
+	for m in model.find_children("*", "MeshInstance3D", true, false):
+		var aabb: AABB = m.mesh.get_aabb()
+		var t: Transform3D = m.global_transform
+		for i in range(8):
+			var p: Vector3 = aabb.position + Vector3(
+				aabb.size.x if (i & 1) != 0 else 0.0,
+				aabb.size.y if (i & 2) != 0 else 0.0,
+				aabb.size.z if (i & 4) != 0 else 0.0)
+			p = t * p
+			mn = mn.min(p)
+			mx = mx.max(p)
+	# отцентрировать по X/Z и поставить на землю
+	model.position = Vector3(-(mn.x + mx.x) * 0.5, -mn.y, -(mn.z + mx.z) * 0.5 - 3.0)
 
 
 func _build_ui() -> void:
 	var layer := CanvasLayer.new()
 	add_child(layer)
 
-	# затемнение
 	var dim := ColorRect.new()
-	dim.color = Color(0, 0, 0, 0.35)
+	dim.color = Color(0, 0, 0, 0.3)
 	dim.set_anchors_preset(Control.PRESET_FULL_RECT)
 	layer.add_child(dim)
 
-	# название
 	var title := Label.new()
 	title.text = "SCRAPLANDS"
 	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
@@ -208,7 +235,6 @@ func _build_settings(layer: CanvasLayer) -> void:
 	t.modulate = Color(0.6, 0.75, 0.95)
 	v.add_child(t)
 
-	# чувствительность
 	_sens_l = Label.new()
 	_sens_l.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	_sens_l.add_theme_font_size_override("font_size", 22)
@@ -229,7 +255,6 @@ func _build_settings(layer: CanvasLayer) -> void:
 	var sep := HSeparator.new()
 	v.add_child(sep)
 
-	# расположение кнопок
 	_layout_btn = Button.new()
 	_layout_btn.focus_mode = Control.FOCUS_NONE
 	_layout_btn.add_theme_font_size_override("font_size", 22)

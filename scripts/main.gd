@@ -18,6 +18,7 @@ func _ready() -> void:
 	_build_ground()
 	_build_trees()
 	_build_rocks()
+	_build_ores()
 	_build_grass()
 	_spawn_player()
 	_build_hud()
@@ -98,14 +99,18 @@ func _tree(pos: Vector3) -> void:
 	trunk.material_override = _mat(Color(0.35, 0.24, 0.12))
 	trunk.position = pos + Vector3(0, h * 0.5, 0)
 	add_child(trunk)
-	var crown := MeshInstance3D.new()
-	var sm := SphereMesh.new()
-	sm.radius = 1.4
-	sm.height = 2.8
-	crown.mesh = sm
-	crown.material_override = _mat(Color(0.2, 0.38, 0.16))
-	crown.position = pos + Vector3(0, h + 0.5, 0)
-	add_child(crown)
+	# пышная крона из нескольких сфер
+	var crown_c := Color(0.2, 0.38, 0.16)
+	var r0 := _rng.randf_range(1.0, 1.5)
+	for j in range(3):
+		var crown := MeshInstance3D.new()
+		var sm := SphereMesh.new()
+		sm.radius = r0 * (1.0 - j * 0.25)
+		sm.height = sm.radius * 2.0
+		crown.mesh = sm
+		crown.material_override = _mat(crown_c.darkened(j * 0.1))
+		crown.position = pos + Vector3(_rng.randf_range(-0.4, 0.4), h + 0.4 + j * 0.4, _rng.randf_range(-0.4, 0.4))
+		add_child(crown)
 
 
 func _build_rocks() -> void:
@@ -121,6 +126,65 @@ func _build_rocks() -> void:
 		rock.position = Vector3(pos.x, r * 0.5, pos.z)
 		rock.scale = Vector3(1, _rng.randf_range(0.5, 0.9), 1)
 		add_child(rock)
+
+
+func _build_ores() -> void:
+	# сера (жёлтые кристаллы), железо (тёмные куски), камень (светлые валуны)
+	for i in range(30):
+		var pos := _random_spot(10.0)
+		var kind := _rng.randi_range(0, 2)
+		match kind:
+			0:  # сера — жёлтый кристалл
+				var c := _ore_crystal(pos, Color(1.0, 0.85, 0.2), Color(1.0, 0.8, 0.15))
+			1:  # железо — тёмный кусок с ржавчиной
+				var r := _rng.randf_range(0.4, 0.9)
+				var ore := MeshInstance3D.new()
+				var sm := SphereMesh.new()
+				sm.radius = r
+				sm.height = r * 1.4
+				ore.mesh = sm
+				ore.material_override = _mat(Color(0.25, 0.22, 0.2))
+				ore.position = Vector3(pos.x, r * 0.6, pos.z)
+				ore.scale = Vector3(1, _rng.randf_range(0.6, 0.9), 1)
+				add_child(ore)
+				# ржавые прожилки
+				var vein := MeshInstance3D.new()
+				var sm2 := SphereMesh.new()
+				sm2.radius = r * 0.4
+				sm2.height = r * 0.8
+				vein.mesh = sm2
+				vein.material_override = _mat(Color(0.6, 0.3, 0.1))
+				vein.position = Vector3(pos.x + r * 0.3, r * 0.7, pos.z)
+				add_child(vein)
+			2:  # камень — светлый валун
+				var r2 := _rng.randf_range(0.5, 1.1)
+				var stone := MeshInstance3D.new()
+				var sm3 := SphereMesh.new()
+				sm3.radius = r2
+				sm3.height = r2 * 1.5
+				stone.mesh = sm3
+				stone.material_override = _mat(Color(0.55, 0.55, 0.6))
+				stone.position = Vector3(pos.x, r2 * 0.5, pos.z)
+				stone.scale = Vector3(1, _rng.randf_range(0.5, 0.85), 1)
+				add_child(stone)
+
+
+func _ore_crystal(pos: Vector3, color: Color, emissive: Color) -> Node3D:
+	var n := Node3D.new()
+	n.position = pos
+	add_child(n)
+	for i in range(3):
+		var c := MeshInstance3D.new()
+		var cm := CylinderMesh.new()
+		cm.top_radius = 0.03
+		cm.bottom_radius = 0.14
+		cm.height = _rng.randf_range(0.4, 0.8)
+		c.mesh = cm
+		c.material_override = _mat(color, emissive)
+		c.position = Vector3(_rng.randf_range(-0.25, 0.25), cm.height * 0.4, _rng.randf_range(-0.25, 0.25))
+		c.rotation_degrees = Vector3(_rng.randf_range(-20, 20), 0, _rng.randf_range(-20, 20))
+		n.add_child(c)
+	return n
 
 
 func _build_grass() -> void:

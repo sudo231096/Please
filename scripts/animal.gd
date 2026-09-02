@@ -23,7 +23,6 @@ func _ready() -> void:
 	add_to_group("enemies")
 	collision_layer = 4
 	collision_mask = 1
-	_build()
 	_player = get_tree().get_first_node_in_group("player")
 
 
@@ -51,6 +50,7 @@ func setup(k: int) -> void:
 			contact_dmg = 20.0
 			aggressive = true
 	hp = max_hp
+	_build()  # строим модель ПОСЛЕ установки kind (фикс бага «все курицы»)
 
 
 func _box(size: Vector3, pos: Vector3, color: Color) -> MeshInstance3D:

@@ -1,5 +1,5 @@
 extends CanvasLayer
-## HUD: прицел, HP, голод, жажда, инвентарь, сенсорное управление.
+## HUD: прицел, HP/голод/жажда, hotbar инвентаря внизу по центру, сенсорное управление.
 
 const JoystickScr := preload("res://scripts/joystick.gd")
 
@@ -7,7 +7,8 @@ var _player: Node3D
 var _hp_fill: ColorRect
 var _hunger_fill: ColorRect
 var _thirst_fill: ColorRect
-var _inv_l: Label
+var _hp_l: Label
+var _slots: Array = []
 var _over: Control
 
 
@@ -38,24 +39,72 @@ func _build() -> void:
 	cross.modulate = Color(1, 1, 1, 0.85)
 	add_child(cross)
 
-	# HP
-	_hp_fill = _bar(Color(0.3, 0.9, 0.4), 20, 20)
-	# голод
-	_hunger_fill = _bar(Color(0.95, 0.6, 0.2), 20, 52)
-	# жажда
-	_thirst_fill = _bar(Color(0.3, 0.65, 1.0), 20, 84)
+	# --- hotbar инвентаря: нижняя середина ---
+	var bar := HBoxContainer.new()
+	bar.anchor_left = 0.5
+	bar.anchor_right = 0.5
+	bar.anchor_top = 1.0
+	bar.anchor_bottom = 1.0
+	bar.offset_left = -210
+	bar.offset_right = 210
+	bar.offset_top = -70
+	bar.offset_bottom = -10
+	bar.add_theme_constant_override("separation", 6)
+	add_child(bar)
 
-	# инвентарь (слева снизу)
-	_inv_l = Label.new()
-	_inv_l.anchor_top = 1.0
-	_inv_l.anchor_bottom = 1.0
-	_inv_l.offset_left = 20
-	_inv_l.offset_top = -120
-	_inv_l.offset_right = 500
-	_inv_l.offset_bottom = -20
-	_inv_l.add_theme_font_size_override("font_size", 20)
-	_inv_l.modulate = Color(0.9, 0.9, 0.85)
-	add_child(_inv_l)
+	# 4 ячейки инвентаря
+	for i in range(4):
+		var slot := PanelContainer.new()
+		slot.custom_minimum_size = Vector2(96, 60)
+		var lbl := Label.new()
+		lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		lbl.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+		lbl.add_theme_font_size_override("font_size", 16)
+		lbl.text = "—"
+		slot.add_child(lbl)
+		bar.add_child(slot)
+		_slots.append(lbl)
+
+	# --- HP / голод / жажда: чуть выше hotbar ---
+	_hp_fill = _bar(Color(0.3, 0.9, 0.4), -110, 30, 180)
+	_hunger_fill = _bar(Color(0.95, 0.6, 0.2), -140, 30, 180)
+	_thirst_fill = _bar(Color(0.3, 0.65, 1.0), -170, 30, 180)
+
+	var hp_icon := Label.new()
+	hp_icon.text = "HP"
+	hp_icon.anchor_top = 1.0
+	hp_icon.anchor_bottom = 1.0
+	hp_icon.offset_left = 30
+	hp_icon.offset_top = -112
+	hp_icon.offset_right = 80
+	hp_icon.offset_bottom = -90
+	hp_icon.add_theme_font_size_override("font_size", 16)
+	hp_icon.modulate = Color(1, 1, 1, 0.8)
+	add_child(hp_icon)
+
+	var hg_icon := Label.new()
+	hg_icon.text = "ЕДА"
+	hg_icon.anchor_top = 1.0
+	hg_icon.anchor_bottom = 1.0
+	hg_icon.offset_left = 30
+	hg_icon.offset_top = -142
+	hg_icon.offset_right = 80
+	hg_icon.offset_bottom = -120
+	hg_icon.add_theme_font_size_override("font_size", 14)
+	hg_icon.modulate = Color(1, 1, 1, 0.8)
+	add_child(hg_icon)
+
+	var th_icon := Label.new()
+	th_icon.text = "ВОДА"
+	th_icon.anchor_top = 1.0
+	th_icon.anchor_bottom = 1.0
+	th_icon.offset_left = 30
+	th_icon.offset_top = -172
+	th_icon.offset_right = 80
+	th_icon.offset_bottom = -150
+	th_icon.add_theme_font_size_override("font_size", 14)
+	th_icon.modulate = Color(1, 1, 1, 0.8)
+	add_child(th_icon)
 
 	var tip := Label.new()
 	tip.text = "WASD — ходьба · мышь — обзор · ЛКМ — удар · E — есть · Q — пить"
@@ -76,7 +125,6 @@ func _build() -> void:
 	add_child(joy)
 	joy.dir_changed.connect(_on_joy)
 
-	# кнопки действий — на противоположной стороне от джойстика
 	var on_right := GameState.buttons_left
 	var side_anchor := 1.0 if on_right else 0.0
 
@@ -180,20 +228,24 @@ func _build() -> void:
 	refresh()
 
 
-func _bar(color: Color, top: float, left: float) -> ColorRect:
+func _bar(color: Color, top: float, left: float, width: float) -> ColorRect:
 	var bg := ColorRect.new()
 	bg.color = Color(0.1, 0.1, 0.1, 0.6)
+	bg.anchor_top = 1.0
+	bg.anchor_bottom = 1.0
 	bg.offset_left = left
 	bg.offset_top = top
-	bg.offset_right = left + 200
-	bg.offset_bottom = top + 24
+	bg.offset_right = left + width
+	bg.offset_bottom = top + 22
 	add_child(bg)
 	var fill := ColorRect.new()
 	fill.color = color
+	fill.anchor_top = 1.0
+	fill.anchor_bottom = 1.0
 	fill.offset_left = left + 2
 	fill.offset_top = top + 2
-	fill.offset_right = left + 198
-	fill.offset_bottom = top + 22
+	fill.offset_right = left + width - 2
+	fill.offset_bottom = top + 20
 	add_child(fill)
 	return fill
 
@@ -208,16 +260,24 @@ func _process(delta: float) -> void:
 
 
 func _update_bars() -> void:
-	var hp_w := (GameState.hp / GameState.max_hp) * 196.0
-	_hp_fill.offset_right = 22.0 + hp_w
-	var hg_w := (GameState.hunger / 100.0) * 196.0
-	_hunger_fill.offset_right = 22.0 + hg_w
-	var th_w := (GameState.thirst / 100.0) * 196.0
-	_thirst_fill.offset_right = 22.0 + th_w
+	var hp_w := (GameState.hp / GameState.max_hp) * 176.0
+	_hp_fill.offset_right = 32.0 + hp_w
+	var hg_w := (GameState.hunger / 100.0) * 176.0
+	_hunger_fill.offset_right = 32.0 + hg_w
+	var th_w := (GameState.thirst / 100.0) * 176.0
+	_thirst_fill.offset_right = 32.0 + th_w
 
 
 func refresh() -> void:
-	_inv_l.text = "Камень: %d · Мясо: %d · Вода: %d" % [GameState.stone, GameState.meat, GameState.water]
+	# слоты hotbar: камень, мясо, вода
+	var items := [["Камень", GameState.stone], ["Мясо", GameState.meat], ["Вода", GameState.water], ["", 0]]
+	for i in range(4):
+		var name: String = items[i][0]
+		var count: int = items[i][1]
+		if count > 0:
+			_slots[i].text = "%s\nx%d" % [name, count]
+		else:
+			_slots[i].text = "—"
 
 
 func _on_died() -> void:
