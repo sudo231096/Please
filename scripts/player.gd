@@ -36,14 +36,14 @@ func _ready() -> void:
 
 func _input(event: InputEvent) -> void:
 	if event is InputEventMouseMotion and Input.get_mouse_mode() == Input.MOUSE_MODE_CAPTURED:
-		rotate_y(-event.relative.x * MOUSE_SENS)
-		_cam.rotate_x(-event.relative.y * MOUSE_SENS)
+		rotate_y(-event.relative.x * GameState.mouse_sens)
+		_cam.rotate_x(-event.relative.y * GameState.mouse_sens)
 		_cam.rotation.x = clampf(_cam.rotation.x, -1.45, 1.45)
 	elif event is InputEventScreenDrag:
 		var vp := get_viewport().get_visible_rect().size
 		if event.position.x > vp.x * 0.5:
-			rotate_y(-event.relative.x * MOUSE_SENS * 2.2)
-			_cam.rotate_x(-event.relative.y * MOUSE_SENS * 2.2)
+			rotate_y(-event.relative.x * GameState.mouse_sens * 2.2)
+			_cam.rotate_x(-event.relative.y * GameState.mouse_sens * 2.2)
 			_cam.rotation.x = clampf(_cam.rotation.x, -1.45, 1.45)
 
 

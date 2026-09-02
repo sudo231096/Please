@@ -69,23 +69,27 @@ func _build() -> void:
 	tip.modulate = Color(1, 1, 1, 0.6)
 	add_child(tip)
 
-	# джойстик
+	# джойстик (слева или справа — из настроек)
 	var joy := Control.new()
 	joy.set_script(JoystickScr)
-	joy.position = Vector2(50, 480)
+	joy.position = Vector2(50, 480) if GameState.buttons_left else Vector2(1020, 480)
 	add_child(joy)
 	joy.dir_changed.connect(_on_joy)
+
+	# кнопки действий — на противоположной стороне от джойстика
+	var on_right := GameState.buttons_left
+	var side_anchor := 1.0 if on_right else 0.0
 
 	# прыжок
 	var jump := Button.new()
 	jump.text = "ПРЫЖОК"
 	jump.focus_mode = Control.FOCUS_NONE
-	jump.anchor_left = 1.0
-	jump.anchor_right = 1.0
+	jump.anchor_left = side_anchor
+	jump.anchor_right = side_anchor
 	jump.anchor_top = 1.0
 	jump.anchor_bottom = 1.0
-	jump.offset_left = -330
-	jump.offset_right = -180
+	jump.offset_left = -330 if on_right else 180
+	jump.offset_right = -180 if on_right else 330
 	jump.offset_top = -180
 	jump.offset_bottom = -60
 	jump.add_theme_font_size_override("font_size", 24)
@@ -96,28 +100,28 @@ func _build() -> void:
 	var atk := Button.new()
 	atk.text = "УДАР"
 	atk.focus_mode = Control.FOCUS_NONE
-	atk.anchor_left = 1.0
-	atk.anchor_right = 1.0
+	atk.anchor_left = side_anchor
+	atk.anchor_right = side_anchor
 	atk.anchor_top = 1.0
 	atk.anchor_bottom = 1.0
-	atk.offset_left = -170
-	atk.offset_right = -20
+	atk.offset_left = -170 if on_right else 20
+	atk.offset_right = -20 if on_right else 170
 	atk.offset_top = -180
 	atk.offset_bottom = -60
 	atk.add_theme_font_size_override("font_size", 26)
 	atk.button_down.connect(func() -> void: _player.set_meta("mob_attack", true))
 	add_child(atk)
 
-	# есть / пить (мобилка)
+	# есть / пить
 	var eat := Button.new()
 	eat.text = "ЕСТЬ"
 	eat.focus_mode = Control.FOCUS_NONE
-	eat.anchor_left = 1.0
-	eat.anchor_right = 1.0
+	eat.anchor_left = side_anchor
+	eat.anchor_right = side_anchor
 	eat.anchor_top = 1.0
 	eat.anchor_bottom = 1.0
-	eat.offset_left = -330
-	eat.offset_right = -180
+	eat.offset_left = -330 if on_right else 180
+	eat.offset_right = -180 if on_right else 330
 	eat.offset_top = -300
 	eat.offset_bottom = -200
 	eat.add_theme_font_size_override("font_size", 20)
@@ -127,12 +131,12 @@ func _build() -> void:
 	var drink := Button.new()
 	drink.text = "ПИТЬ"
 	drink.focus_mode = Control.FOCUS_NONE
-	drink.anchor_left = 1.0
-	drink.anchor_right = 1.0
+	drink.anchor_left = side_anchor
+	drink.anchor_right = side_anchor
 	drink.anchor_top = 1.0
 	drink.anchor_bottom = 1.0
-	drink.offset_left = -170
-	drink.offset_right = -20
+	drink.offset_left = -170 if on_right else 20
+	drink.offset_right = -20 if on_right else 170
 	drink.offset_top = -300
 	drink.offset_bottom = -200
 	drink.add_theme_font_size_override("font_size", 20)
