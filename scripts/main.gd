@@ -22,6 +22,12 @@ var _player: CharacterBody3D
 var _hud: CanvasLayer
 var _rng := RandomNumberGenerator.new()
 var _heights := PackedFloat32Array()
+# позиции добываемых объектов (для добычи вблизи)
+var _tree_spots: Array = []      # [{pos, index, alive}]
+var _rock_spots: Array = []      # [{pos, index, alive}]
+var _ore_spots: Array = []       # [{pos, kind, alive}]
+var _trees_mm: MultiMesh
+var _rocks_mm: MultiMesh
 
 
 func _ready() -> void:
@@ -195,6 +201,7 @@ func _vertex_color_material() -> StandardMaterial3D:
 	m.vertex_color_use_as_albedo = true
 	m.albedo_color = Color.WHITE
 	m.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	m.cull_mode = BaseMaterial3D.CULL_DISABLED  # двухсторонний рендер (фикс «прозрачности»)
 	return m
 
 
@@ -317,16 +324,20 @@ func _build_trees() -> void:
 	mm.transform_format = MultiMesh.TRANSFORM_3D
 	mm.mesh = mesh
 	mm.instance_count = 150
+	_tree_spots.clear()
 	for i in range(150):
 		var pos := _random_spot(12.0)
 		var s := _rng.randf_range(0.7, 1.6)
 		var t := Transform3D(Basis(Vector3.UP, _rng.randf() * TAU), pos + Vector3(0, -0.1, 0))
 		t = t.scaled(Vector3(s, s, s))
 		mm.set_instance_transform(i, t)
+		_tree_spots.append({"pos": pos, "index": i, "alive": true})
 	var inst := MultiMeshInstance3D.new()
 	inst.multimesh = mm
 	inst.material_override = _vertex_color_material()
+	inst.name = "Trees"
 	add_child(inst)
+	_trees_mm = mm
 
 
 func _build_rocks() -> void:
@@ -334,16 +345,20 @@ func _build_rocks() -> void:
 	mm.transform_format = MultiMesh.TRANSFORM_3D
 	mm.mesh = _make_rock_mesh()
 	mm.instance_count = 80
+	_rock_spots.clear()
 	for i in range(80):
 		var pos := _random_spot(8.0)
 		var s := _rng.randf_range(0.6, 2.2)
 		var t := Transform3D(Basis(Vector3.UP, _rng.randf() * TAU), pos + Vector3(0, 0.15 * s, 0))
 		t = t.scaled(Vector3(s, s * _rng.randf_range(0.6, 1.0), s))
 		mm.set_instance_transform(i, t)
+		_rock_spots.append({"pos": pos, "index": i, "alive": true})
 	var inst := MultiMeshInstance3D.new()
 	inst.multimesh = mm
 	inst.material_override = _vertex_color_material()
+	inst.name = "Rocks"
 	add_child(inst)
+	_rocks_mm = mm
 
 
 func _build_grass() -> void:
@@ -366,9 +381,11 @@ func _build_grass() -> void:
 
 func _build_ores() -> void:
 	# руды — отдельные объекты (их мало)
+	_ore_spots.clear()
 	for i in range(20):
 		var pos := _random_spot(10.0)
 		var kind := _rng.randi_range(0, 2)
+		_ore_spots.append({"pos": pos, "kind": kind, "alive": true})
 		match kind:
 			0:
 				_ore_crystal(pos, Color(1.0, 0.85, 0.2), Color(1.0, 0.8, 0.15))
@@ -469,3 +486,78 @@ func _on_animal_died(kind: int) -> void:
 	if _hud:
 		_hud.refresh()
 	_spawn_animal(kind)
+
+
+# ---------- добыча ресурсов ----------
+
+func _harvest(origin: Vector3, look_dir: Vector3) -> String:
+	# ищем ближайший объект в радиусе 3 м перед игроком
+	var best := ""
+	var best_d := 3.0
+	# деревья
+	for t in _tree_spots:
+		if not t["alive"]:
+			continue
+		var d: float = (t["pos"] - origin).length()
+		if d < best_d:
+			best_d = d
+			best = "tree"
+	# камни
+	for r in _rock_spots:
+		if not r["alive"]:
+			continue
+		var d: float = (r["pos"] - origin).length()
+		if d < best_d:
+			best_d = d
+			best = "stone"
+	# руды
+	for o in _ore_spots:
+		if not o["alive"]:
+			continue
+		var d: float = (o["pos"] - origin).length()
+		if d < best_d:
+			best_d = d
+			best = "ore"
+	if best == "":
+		return ""
+
+	match best:
+		"tree":
+			for t in _tree_spots:
+				if t["alive"] and (t["pos"] - origin).length() <= best_d + 0.1:
+					t["alive"] = false
+					GameState.add_resource("wood", int(25.0 * GameState.harvest_bonus()))
+					_hide_mm(_trees_mm, t["index"])
+					if _hud:
+						_hud.refresh()
+					return "wood"
+		"stone":
+			for r in _rock_spots:
+				if r["alive"] and (r["pos"] - origin).length() <= best_d + 0.1:
+					r["alive"] = false
+					GameState.add_resource("stone", int(20.0 * GameState.mining_bonus()))
+					_hide_mm(_rocks_mm, r["index"])
+					if _hud:
+						_hud.refresh()
+					return "stone"
+		"ore":
+			for o in _ore_spots:
+				if o["alive"] and (o["pos"] - origin).length() <= best_d + 0.1:
+					o["alive"] = false
+					if o["kind"] == 0:
+						GameState.add_resource("sulfur", int(15.0 * GameState.mining_bonus()))
+					elif o["kind"] == 1:
+						GameState.add_resource("iron", int(12.0 * GameState.mining_bonus()))
+					else:
+						GameState.add_resource("stone", int(20.0 * GameState.mining_bonus()))
+					if _hud:
+						_hud.refresh()
+					return "ore"
+	return ""
+
+
+func _hide_mm(mm: MultiMesh, index: int) -> void:
+	# скрыть экземпляр (масштаб 0)
+	var t := mm.get_instance_transform(index)
+	t.basis = Basis.IDENTITY.scaled(Vector3.ZERO)
+	mm.set_instance_transform(index, t)

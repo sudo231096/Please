@@ -122,6 +122,14 @@ func _attack() -> void:
 	var fwd := -_cam.global_transform.basis.z
 	fwd.y = 0.0
 	fwd = fwd.normalized()
+	# сначала — добыча (дерево/камень/руда впереди)
+	var terrain := get_tree().get_first_node_in_group("terrain")
+	if terrain and terrain.has_method("_harvest"):
+		var res: String = terrain._harvest(global_position, fwd)
+		if res != "":
+			return  # попали по ресурсу — не бьём зверей
+	# затем — урон зверям
+	var dmg := GameState.attack_damage()
 	for e in get_tree().get_nodes_in_group("enemies"):
 		var en := e as Node3D
 		var to := en.global_position - global_position
@@ -129,7 +137,7 @@ func _attack() -> void:
 		var d := to.length()
 		if d <= ATTACK_RANGE and d > 0.01:
 			if fwd.dot(to.normalized()) > 0.4 and en.has_method("take_damage"):
-				en.take_damage(ATTACK_DMG)
+				en.take_damage(dmg)
 
 
 func take_damage(amount: float, from: Node = null) -> void:

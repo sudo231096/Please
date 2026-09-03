@@ -1,5 +1,5 @@
 extends Node
-## Глобальное состояние выживания: здоровье, голод, жажда, инвентарь, настройки.
+## Глобальное состояние: здоровье, голод, жажда, ресурсы, крафт, настройки.
 
 const SAVE_PATH := "user://scraplands.cfg"
 
@@ -7,14 +7,45 @@ var hp := 100.0
 var max_hp := 100.0
 var hunger := 100.0
 var thirst := 100.0
+
+# ресурсы
+var wood := 0
 var stone := 1
+var sulfur := 0
+var iron := 0
+var cloth := 0
+var metal := 0
 var meat := 0
 var water := 0
 var kills := 0
 
+# инструменты (бусты)
+var has_hatchet := false   # топор: x2 дерево
+var has_pickaxe := false   # кирка: x2 камень/руда
+var has_bow := false       # лук: +урон дальний (упрощённо +урон)
+var has_spear := false     # копьё: +урон
+
 # настройки
 var mouse_sens := 0.0025
-var buttons_left := true  # true = джойстик слева, false = справа
+var buttons_left := true
+
+
+# рецепты: имя -> {затраты, даёт}
+const RECIPES := {
+	"hatchet": {"name": "Каменный топор", "cost": {"wood": 100, "stone": 50}, "type": "tool"},
+	"pickaxe": {"name": "Каменная кирка", "cost": {"wood": 100, "stone": 50}, "type": "tool"},
+	"bow": {"name": "Лук", "cost": {"wood": 100, "cloth": 50}, "type": "weapon"},
+	"spear": {"name": "Копьё", "cost": {"wood": 100, "stone": 25}, "type": "weapon"},
+	"campfire": {"name": "Костёр", "cost": {"wood": 100}, "type": "build"},
+	"furnace": {"name": "Печь", "cost": {"stone": 200, "wood": 50}, "type": "build"},
+	"wall": {"name": "Деревянная стена", "cost": {"wood": 50}, "type": "build"},
+	"floor": {"name": "Деревянный фундамент", "cost": {"wood": 100}, "type": "build"},
+	"door": {"name": "Деревянная дверь", "cost": {"wood": 100}, "type": "build"},
+	"bag": {"name": "Спальник", "cost": {"cloth": 25}, "type": "build"},
+}
+
+# счётчики построек
+var built := {"campfire": 0, "furnace": 0, "wall": 0, "floor": 0, "door": 0, "bag": 0}
 
 
 func _ready() -> void:
@@ -41,10 +72,21 @@ func reset_run() -> void:
 	max_hp = 100.0
 	hunger = 100.0
 	thirst = 100.0
+	wood = 0
 	stone = 1
+	sulfur = 0
+	iron = 0
+	cloth = 0
+	metal = 0
 	meat = 0
 	water = 0
 	kills = 0
+	has_hatchet = false
+	has_pickaxe = false
+	has_bow = false
+	has_spear = false
+	for k in built:
+		built[k] = 0
 
 
 func tick(delta: float) -> void:
@@ -71,3 +113,85 @@ func drink() -> void:
 
 func add_meat(n: int) -> void:
 	meat += n
+
+
+func add_resource(name: String, n: int) -> void:
+	match name:
+		"wood": wood += n
+		"stone": stone += n
+		"sulfur": sulfur += n
+		"iron": iron += n
+		"cloth": cloth += n
+		"metal": metal += n
+		"water": water += n
+
+
+# множитель добычи дерева/камня с учётом инструментов
+func harvest_bonus() -> float:
+	var m := 1.0
+	if has_hatchet:
+		m *= 2.0
+	return m
+
+
+func mining_bonus() -> float:
+	var m := 1.0
+	if has_pickaxe:
+		m *= 2.0
+	return m
+
+
+func attack_damage() -> float:
+	var d := 30.0
+	if has_spear:
+		d *= 1.5
+	if has_bow:
+		d *= 1.25
+	return d
+
+
+func has_resource(name: String, n: int) -> bool:
+	var have := 0
+	match name:
+		"wood": have = wood
+		"stone": have = stone
+		"sulfur": have = sulfur
+		"iron": have = iron
+		"cloth": have = cloth
+		"metal": have = metal
+	return have >= n
+
+
+func take_resource(name: String, n: int) -> void:
+	match name:
+		"wood": wood -= n
+		"stone": stone -= n
+		"sulfur": sulfur -= n
+		"iron": iron -= n
+		"cloth": cloth -= n
+		"metal": metal -= n
+
+
+func can_craft(id: String) -> bool:
+	if not RECIPES.has(id):
+		return false
+	var cost: Dictionary = RECIPES[id]["cost"]
+	for r in cost:
+		if not has_resource(r, cost[r]):
+			return false
+	return true
+
+
+func craft(id: String) -> bool:
+	if not can_craft(id):
+		return false
+	var cost: Dictionary = RECIPES[id]["cost"]
+	for r in cost:
+		take_resource(r, cost[r])
+	match id:
+		"hatchet": has_hatchet = true
+		"pickaxe": has_pickaxe = true
+		"bow": has_bow = true
+		"spear": has_spear = true
+		_: built[id] = built.get(id, 0) + 1
+	return true

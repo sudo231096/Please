@@ -10,6 +10,8 @@ var _thirst_fill: ColorRect
 var _hp_l: Label
 var _slots: Array = []
 var _over: Control
+var _craft: Control
+var _craft_list: VBoxContainer
 
 
 func bind(p: Node3D) -> void:
@@ -20,6 +22,13 @@ func bind(p: Node3D) -> void:
 func _ready() -> void:
 	layer = 10
 	_build()
+
+
+func _input(event: InputEvent) -> void:
+	if event is InputEventKey and event.pressed and not event.echo:
+		if event.keycode == KEY_C:
+			_craft.visible = not _craft.visible
+			_refresh_craft()
 
 
 func _build() -> void:
@@ -191,6 +200,28 @@ func _build() -> void:
 	drink.pressed.connect(func() -> void: GameState.drink(); refresh())
 	add_child(drink)
 
+	# кнопка крафта
+	var craft_btn := Button.new()
+	craft_btn.text = "КРАФТ"
+	craft_btn.focus_mode = Control.FOCUS_NONE
+	craft_btn.anchor_left = side_anchor
+	craft_btn.anchor_right = side_anchor
+	craft_btn.anchor_top = 1.0
+	craft_btn.anchor_bottom = 1.0
+	craft_btn.offset_left = -250 if on_right else 100
+	craft_btn.offset_right = -100 if on_right else 250
+	craft_btn.offset_top = -300
+	craft_btn.offset_bottom = -200
+	craft_btn.add_theme_font_size_override("font_size", 20)
+	craft_btn.modulate = Color(0.8, 0.65, 0.4)
+	craft_btn.pressed.connect(func() -> void:
+		_craft.visible = not _craft.visible
+		_refresh_craft()
+	)
+	add_child(craft_btn)
+
+	_build_craft_menu()
+
 	# экран смерти
 	_over = Control.new()
 	_over.set_anchors_preset(Control.PRESET_FULL_RECT)
@@ -269,8 +300,8 @@ func _update_bars() -> void:
 
 
 func refresh() -> void:
-	# слоты hotbar: камень, мясо, вода
-	var items := [["Камень", GameState.stone], ["Мясо", GameState.meat], ["Вода", GameState.water], ["", 0]]
+	# слоты hotbar: дерево, камень, мясо, вода
+	var items := [["Дерево", GameState.wood], ["Камень", GameState.stone], ["Мясо", GameState.meat], ["Сера", GameState.sulfur]]
 	for i in range(4):
 		var name: String = items[i][0]
 		var count: int = items[i][1]
@@ -278,6 +309,87 @@ func refresh() -> void:
 			_slots[i].text = "%s\nx%d" % [name, count]
 		else:
 			_slots[i].text = "—"
+
+
+func _build_craft_menu() -> void:
+	_craft = Control.new()
+	_craft.set_anchors_preset(Control.PRESET_FULL_RECT)
+	_craft.visible = false
+	add_child(_craft)
+	var dim := ColorRect.new()
+	dim.color = Color(0, 0, 0, 0.65)
+	dim.set_anchors_preset(Control.PRESET_FULL_RECT)
+	_craft.add_child(dim)
+
+	var panel := PanelContainer.new()
+	panel.anchor_left = 0.5
+	panel.anchor_right = 0.5
+	panel.anchor_top = 0.5
+	panel.anchor_bottom = 0.5
+	panel.offset_left = -300
+	panel.offset_right = 300
+	panel.offset_top = -320
+	panel.offset_bottom = 320
+	_craft.add_child(panel)
+
+	var v := VBoxContainer.new()
+	v.add_theme_constant_override("separation", 6)
+	panel.add_child(v)
+
+	var t := Label.new()
+	t.text = "КРАФТ"
+	t.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	t.add_theme_font_size_override("font_size", 30)
+	t.modulate = Color(0.8, 0.65, 0.4)
+	v.add_child(t)
+
+	var res := Label.new()
+	res.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	res.add_theme_font_size_override("font_size", 16)
+	res.modulate = Color(0.9, 0.9, 0.85)
+	res.name = "ResLabel"
+	v.add_child(res)
+
+	var sep := HSeparator.new()
+	v.add_child(sep)
+
+	_craft_list = VBoxContainer.new()
+	_craft_list.add_theme_constant_override("separation", 6)
+	v.add_child(_craft_list)
+
+	var close := Button.new()
+	close.text = "Закрыть"
+	close.focus_mode = Control.FOCUS_NONE
+	close.add_theme_font_size_override("font_size", 20)
+	close.pressed.connect(func() -> void: _craft.visible = false)
+	v.add_child(close)
+
+
+func _refresh_craft() -> void:
+	for c in _craft_list.get_children():
+		c.queue_free()
+	# строка ресурсов
+	var res_label := _craft.find_child("ResLabel", true, false) as Label
+	if res_label:
+		res_label.text = "Дерево:%d  Камень:%d  Сера:%d  Железо:%d  Ткань:%d  Металл:%d" % [GameState.wood, GameState.stone, GameState.sulfur, GameState.iron, GameState.cloth, GameState.metal]
+	# кнопки рецептов
+	for id in GameState.RECIPES:
+		var rec: Dictionary = GameState.RECIPES[id]
+		var btn := Button.new()
+		btn.focus_mode = Control.FOCUS_NONE
+		btn.add_theme_font_size_override("font_size", 18)
+		# стоимость строкой
+		var cost_txt := ""
+		for r in rec["cost"]:
+			cost_txt += " %s:%d" % [r, rec["cost"][r]]
+		btn.text = rec["name"] + "  (" + cost_txt.strip_edges() + ")"
+		btn.disabled = not GameState.can_craft(id)
+		btn.pressed.connect(func() -> void:
+			GameState.craft(id)
+			_refresh_craft()
+			refresh()
+		)
+		_craft_list.add_child(btn)
 
 
 func _on_died() -> void:
