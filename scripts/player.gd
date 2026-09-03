@@ -166,7 +166,7 @@ func _physics_process(delta: float) -> void:
 			_target_eye = EYE_HEIGHT
 
 	# скорость: при приседе медленнее; базовая — с учётом прокачки
-	var spd := (CROUCH_SPEED if _crouching else GameState.player_speed())
+	var spd := CROUCH_SPEED if _crouching else SPEED
 
 	# горизонтальное движение
 	global_position.x += wish.x * spd * delta

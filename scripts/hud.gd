@@ -12,7 +12,7 @@ var _slots: Array = []
 var _over: Control
 var _craft: Control
 var _craft_list: VBoxContainer
-var _upgrade_list: VBoxContainer
+var _tech_list: VBoxContainer
 
 
 func bind(p: Node3D) -> void:
@@ -133,6 +133,23 @@ func _build() -> void:
 	tip.add_theme_font_size_override("font_size", 16)
 	tip.modulate = Color(1, 1, 1, 0.6)
 	add_child(tip)
+
+	# кнопка «Карта» слева в углу
+	var map_btn := Button.new()
+	map_btn.text = "КАРТА"
+	map_btn.focus_mode = Control.FOCUS_NONE
+	map_btn.offset_left = 20
+	map_btn.offset_top = 20
+	map_btn.offset_right = 140
+	map_btn.offset_bottom = 66
+	map_btn.add_theme_font_size_override("font_size", 20)
+	map_btn.modulate = Color(0.5, 0.75, 0.9)
+	map_btn.pressed.connect(func() -> void:
+		if _player:
+			GameState.last_pos = _player.global_position
+		get_tree().change_scene_to_file("res://scenes/Map.tscn")
+	)
+	add_child(map_btn)
 
 	# джойстик (слева или справа — из настроек)
 	var joy := Control.new()
@@ -379,29 +396,29 @@ func _build_craft_menu() -> void:
 	v.add_child(up_sep)
 
 	var up_title := Label.new()
-	up_title.text = "УЛУЧШЕНИЯ (нужен верстак)"
+	up_title.text = "ДЕРЕВО ТЕХНОЛОГИЙ (за скрап)"
 	up_title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	up_title.add_theme_font_size_override("font_size", 18)
 	up_title.modulate = Color(0.7, 0.85, 1.0)
 	v.add_child(up_title)
 
-	_upgrade_list = VBoxContainer.new()
-	_upgrade_list.add_theme_constant_override("separation", 4)
-	v.add_child(_upgrade_list)
+	_tech_list = VBoxContainer.new()
+	_tech_list.add_theme_constant_override("separation", 4)
+	v.add_child(_tech_list)
 
-	# кнопки улучшений (создаются один раз)
-	for kind in ["hp", "dmg", "speed", "harvest"]:
-		var ubtn := Button.new()
-		ubtn.focus_mode = Control.FOCUS_NONE
-		ubtn.add_theme_font_size_override("font_size", 15)
-		var k: String = kind
-		ubtn.pressed.connect(func() -> void:
-			if GameState.upgrade(k):
+	# кнопки технологий (создаются один раз)
+	for tid in GameState.TECH_TREE:
+		var tbtn := Button.new()
+		tbtn.focus_mode = Control.FOCUS_NONE
+		tbtn.add_theme_font_size_override("font_size", 15)
+		var k: String = tid
+		tbtn.pressed.connect(func() -> void:
+			if GameState.research(k):
 				_refresh_craft()
 				refresh()
 		)
-		ubtn.name = "up_" + kind
-		_upgrade_list.add_child(ubtn)
+		tbtn.name = "tech_" + tid
+		_tech_list.add_child(tbtn)
 
 	var close := Button.new()
 	close.text = "Закрыть"
@@ -417,9 +434,11 @@ func _refresh_craft() -> void:
 	# строка ресурсов
 	var res_label := _craft.find_child("ResLabel", true, false) as Label
 	if res_label:
-		res_label.text = "Дерево:%d  Камень:%d  Сера:%d  Железо:%d  Ткань:%d  Металл:%d" % [GameState.wood, GameState.stone, GameState.sulfur, GameState.iron, GameState.cloth, GameState.metal]
-	# кнопки рецептов
+		res_label.text = "Дерево:%d  Камень:%d  Сера:%d  Железо:%d  Скрап:%d" % [GameState.wood, GameState.stone, GameState.sulfur, GameState.iron, GameState.scrap]
+	# кнопки рецептов (показываем только изученные)
 	for id in GameState.RECIPES:
+		if not GameState.recipe_unlocked(id):
+			continue
 		var rec: Dictionary = GameState.RECIPES[id]
 		var btn := Button.new()
 		btn.focus_mode = Control.FOCUS_NONE
@@ -432,7 +451,6 @@ func _refresh_craft() -> void:
 		var rid: String = id
 		btn.pressed.connect(func() -> void:
 			if GameState.craft(rid):
-				# постройка — входим в режим строительства (призрак)
 				if rec["type"] == "build":
 					GameState.begin_build(rid)
 					_craft.visible = false
@@ -440,22 +458,28 @@ func _refresh_craft() -> void:
 				refresh()
 		)
 		_craft_list.add_child(btn)
-	# обновить текст улучшений
-	_refresh_upgrades()
+	# обновить дерево технологий
+	_refresh_tech()
 
 
-func _refresh_upgrades() -> void:
-	var names := {"hp": "Здоровье +20", "dmg": "Урон +5", "speed": "Скорость +0.5", "harvest": "Добыча +50%"}
-	var lvls := {"hp": GameState.hp_level, "dmg": GameState.dmg_level, "speed": GameState.speed_level, "harvest": GameState.harvest_level}
-	for kind in names:
-		var btn := _upgrade_list.find_child("up_" + kind, true, false) as Button
-		if btn:
-			btn.text = "%s  —  %d дерева  (ур. %d)" % [names[kind], GameState.upgrade_cost(kind), lvls[kind]]
-			if not GameState.workbench_built:
-				btn.text = "%s (нужен верстак)" % names[kind]
-				btn.disabled = true
-			else:
-				btn.disabled = not GameState.can_upgrade(kind)
+func _refresh_tech() -> void:
+	for tid in GameState.TECH_TREE:
+		var tbtn := _tech_list.find_child("tech_" + tid, true, false) as Button
+		if not tbtn:
+			continue
+		var t: Dictionary = GameState.TECH_TREE[tid]
+		if GameState.is_tech_learned(tid):
+			tbtn.text = "✓ " + t["name"]
+			tbtn.disabled = true
+			tbtn.modulate = Color(0.6, 1.0, 0.6)
+		elif GameState.tech_available(tid):
+			tbtn.text = t["name"] + "  —  " + str(t["cost"]) + " скрапа"
+			tbtn.disabled = GameState.scrap < int(t["cost"])
+			tbtn.modulate = Color(1, 1, 1) if GameState.scrap >= int(t["cost"]) else Color(0.5, 0.5, 0.5)
+		else:
+			tbtn.text = "🔒 " + t["name"] + " (нужно предыдущее)"
+			tbtn.disabled = true
+			tbtn.modulate = Color(0.45, 0.45, 0.45)
 
 
 func _on_died() -> void:

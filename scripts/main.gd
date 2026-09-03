@@ -326,15 +326,16 @@ func _build_trees() -> void:
 	var mm := MultiMesh.new()
 	mm.transform_format = MultiMesh.TRANSFORM_3D
 	mm.mesh = mesh
-	mm.instance_count = 150
+	mm.instance_count = 200
 	_tree_spots.clear()
-	for i in range(150):
+	for i in range(200):
 		var pos := _random_spot(12.0)
-		var s := _rng.randf_range(0.7, 1.6)
+		var big := _rng.randf() < 0.35  # ~35% большие деревья
+		var s := _rng.randf_range(2.2, 3.2) if big else _rng.randf_range(0.7, 1.6)
 		var t := Transform3D(Basis(Vector3.UP, _rng.randf() * TAU), pos + Vector3(0, -0.1, 0))
 		t = t.scaled(Vector3(s, s, s))
 		mm.set_instance_transform(i, t)
-		_tree_spots.append({"pos": pos, "index": i, "alive": true})
+		_tree_spots.append({"pos": pos, "index": i, "alive": true, "big": big})
 	var inst := MultiMeshInstance3D.new()
 	inst.multimesh = mm
 	inst.material_override = _vertex_color_material()
@@ -383,11 +384,11 @@ func _build_grass() -> void:
 
 
 func _build_ores() -> void:
-	# руды — отдельные объекты (их мало)
+	# руды: 0=сера (жёлтая), 1=железо (тёмная), 2=камень (светлая), 3=металл (блестящая)
 	_ore_spots.clear()
-	for i in range(20):
+	for i in range(30):
 		var pos := _random_spot(10.0)
-		var kind := _rng.randi_range(0, 2)
+		var kind := _rng.randi_range(0, 3)
 		_ore_spots.append({"pos": pos, "kind": kind, "alive": true})
 		match kind:
 			0:
@@ -422,6 +423,17 @@ func _build_ores() -> void:
 				stone.position = Vector3(pos.x, pos.y + r2 * 0.4, pos.z)
 				stone.scale = Vector3(1, _rng.randf_range(0.5, 0.85), 1)
 				add_child(stone)
+			3:
+				# металл: блестящая руда
+				var r3 := _rng.randf_range(0.5, 1.0)
+				var metal := MeshInstance3D.new()
+				var sm4 := SphereMesh.new()
+				sm4.radius = r3
+				sm4.height = r3 * 1.3
+				metal.mesh = sm4
+				metal.material_override = _mat(Color(0.55, 0.58, 0.62), Color(0.3, 0.35, 0.4))
+				metal.position = Vector3(pos.x, pos.y + r3 * 0.4, pos.z)
+				add_child(metal)
 
 
 func _ore_crystal(pos: Vector3, color: Color, emissive: Color) -> void:
@@ -530,7 +542,9 @@ func _harvest(origin: Vector3, look_dir: Vector3) -> String:
 			for t in _tree_spots:
 				if t["alive"] and (t["pos"] - origin).length() <= best_d + 0.1:
 					t["alive"] = false
-					GameState.add_resource("wood", int(25.0 * GameState.harvest_bonus()))
+					# большое дерево даёт больше дерева
+					var amt := 60 if t.get("big", false) else 25
+					GameState.add_resource("wood", int(amt * GameState.harvest_bonus()))
 					_hide_mm(_trees_mm, t["index"])
 					if _hud:
 						_hud.refresh()
@@ -552,8 +566,11 @@ func _harvest(origin: Vector3, look_dir: Vector3) -> String:
 						GameState.add_resource("sulfur", int(15.0 * GameState.mining_bonus()))
 					elif o["kind"] == 1:
 						GameState.add_resource("iron", int(12.0 * GameState.mining_bonus()))
-					else:
+					elif o["kind"] == 2:
 						GameState.add_resource("stone", int(20.0 * GameState.mining_bonus()))
+					else:
+						GameState.add_resource("metal", int(10.0 * GameState.mining_bonus()))
+						GameState.add_resource("scrap", int(3.0 * GameState.mining_bonus()))
 					if _hud:
 						_hud.refresh()
 					return "ore"

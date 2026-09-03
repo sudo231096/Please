@@ -1,5 +1,5 @@
 extends Node
-## Глобальное состояние: здоровье, голод, жажда, ресурсы, крафт, настройки.
+## Глобальное состояние: здоровье, голод, жажда, ресурсы, дерево технологий, настройки.
 
 const SAVE_PATH := "user://scraplands.cfg"
 
@@ -15,63 +15,72 @@ var sulfur := 0
 var iron := 0
 var cloth := 0
 var metal := 0
+var scrap := 0       # скрап — валюта прокачки (как в Rust)
 var meat := 0
 var water := 0
 var kills := 0
 
-# инструменты (бусты)
-var has_hatchet := false   # топор: x2 дерево
-var has_pickaxe := false   # кирка: x2 камень/руда
-var has_bow := false       # лук: +урон дальний (упрощённо +урон)
-var has_spear := false     # копьё: +урон
+# инструменты
+var has_hatchet := false
+var has_pickaxe := false
+var has_bow := false
+var has_spear := false
 
 # настройки
 var mouse_sens := 0.0025
 var buttons_left := true
 
+var last_pos := Vector3.ZERO  # позиция игрока для карты
+
 # инвентарь / hotbar
-var selected_slot := 0       # активный слот hotbar (0..5)
-# режим строительства
-var build_mode := false      # строим «призраком»
-var build_kind := ""         # что строим
-var build_rot := 0.0         # поворот постройки (рад)
+var selected_slot := 0
+var build_mode := false
+var build_kind := ""
+var build_rot := 0.0
 
 
-# предметы hotbar: [ключ ресурса, название, можно использовать?]
+# --- ДЕРЕВО ТЕХНОЛОГИЙ (как в Rust: изучаешь за скрап) ---
+# tech id -> {name, cost (скрап), prereq (id или ""), unlocks (список рецептов)}
+const TECH_TREE := {
+	"woodwork": {"name": "Обработка дерева", "cost": 50, "prereq": "", "unlocks": ["hatchet", "pickaxe", "campfire", "wall", "floor"]},
+	"hunting": {"name": "Охота", "cost": 75, "prereq": "woodwork", "unlocks": ["spear", "bow"]},
+	"masonry": {"name": "Каменное дело", "cost": 100, "prereq": "woodwork", "unlocks": ["furnace", "door"]},
+	"metallurgy": {"name": "Металлургия", "cost": 150, "prereq": "masonry", "unlocks": ["workbench", "bag"]},
+	"advanced_weapons": {"name": "Продвинутое оружие", "cost": 200, "prereq": "hunting", "unlocks": []},
+	"fortification": {"name": "Укрепления", "cost": 250, "prereq": "masonry", "unlocks": []},
+}
+
+# изученные технологии
+var learned_techs := {}
+
+# все рецепты (доступны только после изучения технологии)
+const RECIPES := {
+	"hatchet": {"name": "Каменный топор", "cost": {"wood": 100, "stone": 50}, "type": "tool", "tech": "woodwork"},
+	"pickaxe": {"name": "Каменная кирка", "cost": {"wood": 100, "stone": 50}, "type": "tool", "tech": "woodwork"},
+	"spear": {"name": "Копьё", "cost": {"wood": 100, "stone": 25}, "type": "weapon", "tech": "hunting"},
+	"bow": {"name": "Лук", "cost": {"wood": 100, "cloth": 50}, "type": "weapon", "tech": "hunting"},
+	"campfire": {"name": "Костёр", "cost": {"wood": 100}, "type": "build", "tech": "woodwork"},
+	"wall": {"name": "Деревянная стена", "cost": {"wood": 50}, "type": "build", "tech": "woodwork"},
+	"floor": {"name": "Деревянный фундамент", "cost": {"wood": 100}, "type": "build", "tech": "woodwork"},
+	"furnace": {"name": "Печь", "cost": {"stone": 200, "wood": 50}, "type": "build", "tech": "masonry"},
+	"door": {"name": "Деревянная дверь", "cost": {"wood": 100}, "type": "build", "tech": "masonry"},
+	"workbench": {"name": "Верстак", "cost": {"wood": 200, "stone": 100}, "type": "build", "tech": "metallurgy"},
+	"bag": {"name": "Спальник", "cost": {"cloth": 25}, "type": "build", "tech": "metallurgy"},
+}
+
+var built := {"campfire": 0, "furnace": 0, "wall": 0, "floor": 0, "door": 0, "bag": 0, "workbench": 0}
+var workbench_built := false
+
+
+# предметы hotbar
 const HOTBAR := [
 	["wood", "Дерево", false],
 	["stone", "Камень", false],
 	["sulfur", "Сера", false],
 	["iron", "Железо", false],
-	["meat", "Мясо", true],   # съесть
-	["water", "Вода", true],  # выпить
+	["meat", "Мясо", true],
+	["scrap", "Скрап", false],
 ]
-
-
-# рецепты: имя -> {затраты, даёт}
-const RECIPES := {
-	"hatchet": {"name": "Каменный топор", "cost": {"wood": 100, "stone": 50}, "type": "tool"},
-	"pickaxe": {"name": "Каменная кирка", "cost": {"wood": 100, "stone": 50}, "type": "tool"},
-	"bow": {"name": "Лук", "cost": {"wood": 100, "cloth": 50}, "type": "weapon"},
-	"spear": {"name": "Копьё", "cost": {"wood": 100, "stone": 25}, "type": "weapon"},
-	"campfire": {"name": "Костёр", "cost": {"wood": 100}, "type": "build"},
-	"furnace": {"name": "Печь", "cost": {"stone": 200, "wood": 50}, "type": "build"},
-	"workbench": {"name": "Верстак", "cost": {"wood": 200, "stone": 100}, "type": "build"},
-	"wall": {"name": "Деревянная стена", "cost": {"wood": 50}, "type": "build"},
-	"floor": {"name": "Деревянный фундамент", "cost": {"wood": 100}, "type": "build"},
-	"door": {"name": "Деревянная дверь", "cost": {"wood": 100}, "type": "build"},
-	"bag": {"name": "Спальник", "cost": {"cloth": 25}, "type": "build"},
-}
-
-# счётчики построек
-var built := {"campfire": 0, "furnace": 0, "wall": 0, "floor": 0, "door": 0, "bag": 0}
-var workbench_built := false  # верстак построен — открывает дерево улучшений
-
-# дерево улучшений (прокачка через верстак)
-var hp_level := 0
-var dmg_level := 0
-var speed_level := 0
-var harvest_level := 0
 
 
 func _ready() -> void:
@@ -104,6 +113,7 @@ func reset_run() -> void:
 	iron = 0
 	cloth = 0
 	metal = 0
+	scrap = 0
 	meat = 0
 	water = 0
 	kills = 0
@@ -112,10 +122,7 @@ func reset_run() -> void:
 	has_bow = false
 	has_spear = false
 	workbench_built = false
-	hp_level = 0
-	dmg_level = 0
-	speed_level = 0
-	harvest_level = 0
+	learned_techs.clear()
 	for k in built:
 		built[k] = 0
 
@@ -142,11 +149,6 @@ func drink() -> void:
 		thirst = minf(100.0, thirst + 40.0)
 
 
-# ресурс активного слота hotbar
-func hotbar_res(slot: int) -> String:
-	return HOTBAR[slot][0]
-
-
 func hotbar_count(slot: int) -> int:
 	var key: String = HOTBAR[slot][0]
 	match key:
@@ -155,11 +157,10 @@ func hotbar_count(slot: int) -> int:
 		"sulfur": return sulfur
 		"iron": return iron
 		"meat": return meat
-		"water": return water
+		"scrap": return scrap
 	return 0
 
 
-# использовать предмет в слоте (съесть мясо / выпить воду) -> сообщение
 func use_slot(slot: int) -> String:
 	var key: String = HOTBAR[slot][0]
 	if key == "meat":
@@ -167,15 +168,9 @@ func use_slot(slot: int) -> String:
 			eat()
 			return "Съел мясо"
 		return "Нет мяса"
-	elif key == "water":
-		if water > 0:
-			drink()
-			return "Выпил воду"
-		return "Нет воды"
 	return ""
 
 
-# начать строительство
 func begin_build(kind: String) -> void:
 	build_mode = true
 	build_kind = kind
@@ -194,16 +189,17 @@ func add_resource(name: String, n: int) -> void:
 		"iron": iron += n
 		"cloth": cloth += n
 		"metal": metal += n
+		"scrap": scrap += n
 		"water": water += n
 		"meat": meat += n
 
 
-# множитель добычи камня/руды с учётом инструментов
+func harvest_bonus() -> float:
+	return 2.0 if has_hatchet else 1.0
+
+
 func mining_bonus() -> float:
-	var m := 1.0
-	if has_pickaxe:
-		m *= 2.0
-	return m
+	return 2.0 if has_pickaxe else 1.0
 
 
 func attack_damage() -> float:
@@ -212,69 +208,51 @@ func attack_damage() -> float:
 		d *= 1.5
 	if has_bow:
 		d *= 1.25
-	d += dmg_level * 5.0
 	return d
 
 
-# --- дерево улучшений ---
+# --- дерево технологий ---
 
-func upgrade_cost(kind: String) -> int:
-	var lvl := 0
-	match kind:
-		"hp": lvl = hp_level
-		"dmg": lvl = dmg_level
-		"speed": lvl = speed_level
-		"harvest": lvl = harvest_level
-	return 50 + lvl * 50
+func is_tech_learned(id: String) -> bool:
+	return learned_techs.has(id)
 
 
-func can_upgrade(kind: String) -> bool:
-	if not workbench_built:
+func tech_available(id: String) -> bool:
+	# можно изучить, если изучен пререквизит и ещё не изучена
+	if learned_techs.has(id):
 		return false
-	var cost := upgrade_cost(kind)
-	return wood >= cost
+	var t: Dictionary = TECH_TREE[id]
+	var prereq: String = t["prereq"]
+	return prereq == "" or learned_techs.has(prereq)
 
 
-func upgrade(kind: String) -> bool:
-	if not can_upgrade(kind):
+func research(id: String) -> bool:
+	if not tech_available(id):
 		return false
-	wood -= upgrade_cost(kind)
-	match kind:
-		"hp":
-			hp_level += 1
-			max_hp += 20.0
-			hp = max_hp
-		"dmg":
-			dmg_level += 1
-		"speed":
-			speed_level += 1
-		"harvest":
-			harvest_level += 1
+	var t: Dictionary = TECH_TREE[id]
+	var cost: int = t["cost"]
+	if scrap < cost:
+		return false
+	scrap -= cost
+	learned_techs[id] = true
 	return true
 
 
-func player_speed() -> float:
-	return 6.0 + speed_level * 0.5
-
-
-func harvest_bonus() -> float:
-	var m := 1.0
-	if has_hatchet:
-		m *= 2.0
-	m += harvest_level * 0.5
-	return m
+func recipe_unlocked(id: String) -> bool:
+	var tech: String = RECIPES[id]["tech"]
+	return learned_techs.has(tech)
 
 
 func has_resource(name: String, n: int) -> bool:
-	var have := 0
 	match name:
-		"wood": have = wood
-		"stone": have = stone
-		"sulfur": have = sulfur
-		"iron": have = iron
-		"cloth": have = cloth
-		"metal": have = metal
-	return have >= n
+		"wood": return wood >= n
+		"stone": return stone >= n
+		"sulfur": return sulfur >= n
+		"iron": return iron >= n
+		"cloth": return cloth >= n
+		"metal": return metal >= n
+		"scrap": return scrap >= n
+	return false
 
 
 func take_resource(name: String, n: int) -> void:
@@ -285,10 +263,11 @@ func take_resource(name: String, n: int) -> void:
 		"iron": iron -= n
 		"cloth": cloth -= n
 		"metal": metal -= n
+		"scrap": scrap -= n
 
 
 func can_craft(id: String) -> bool:
-	if not RECIPES.has(id):
+	if not recipe_unlocked(id):
 		return false
 	var cost: Dictionary = RECIPES[id]["cost"]
 	for r in cost:
