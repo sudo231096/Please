@@ -1,17 +1,20 @@
 extends CharacterBody3D
-## Игрок (от первого лица): выживание в пустоши, камень/топор.
+## Игрок (от первого лица): выживание в пустоши, ходьба по рельефу.
 
 const SPEED := 6.0
 const JUMP_V := 5.2
 const GRAV := 14.0
-const MOUSE_SENS := 0.0025
 const ATTACK_RANGE := 2.6
 const ATTACK_DMG := 30.0
 const ATTACK_CD := 0.55
+const EYE_HEIGHT := 1.7
+const FEET := 0.85  # смещение от центра до подошв
 
 var _cam: Camera3D
 var _attack_cd := 0.0
 var _hurt_cd := 0.0
+var _vy := 0.0
+var _grounded := true
 
 signal died
 
@@ -21,16 +24,9 @@ func _ready() -> void:
 	collision_layer = 2
 	collision_mask = 1
 	_cam = Camera3D.new()
-	_cam.position = Vector3(0, 1.7, 0)
+	_cam.position = Vector3(0, EYE_HEIGHT, 0)
 	_cam.current = true
 	add_child(_cam)
-	var col := CollisionShape3D.new()
-	var cs := CapsuleShape3D.new()
-	cs.radius = 0.4
-	cs.height = 1.7
-	col.shape = cs
-	col.position = Vector3(0, 0.85, 0)
-	add_child(col)
 	Input.set_mouse_mode(Input.MOUSE_MODE_CAPTURED)
 
 
@@ -47,22 +43,23 @@ func _input(event: InputEvent) -> void:
 			_cam.rotation.x = clampf(_cam.rotation.x, -1.45, 1.45)
 
 
+func _ground_height() -> float:
+	var terrain := get_tree().get_first_node_in_group("terrain")
+	if terrain and terrain.has_method("_ground_height"):
+		return terrain._ground_height(global_position.x, global_position.z)
+	return 0.0
+
+
 func _physics_process(delta: float) -> void:
 	_attack_cd = maxf(0.0, _attack_cd - delta)
 	_hurt_cd = maxf(0.0, _hurt_cd - delta)
 
-	# выживание: голод/жажда тикают
 	GameState.tick(delta)
 	if GameState.hp <= 0.0:
 		died.emit()
 		return
 
-	if not is_on_floor():
-		velocity.y -= GRAV * delta
-	else:
-		if velocity.y < 0.0:
-			velocity.y = 0.0
-
+	# ввод движения
 	var mv := Vector2.ZERO
 	if Input.is_physical_key_pressed(KEY_W):
 		mv.y -= 1.0
@@ -81,16 +78,32 @@ func _physics_process(delta: float) -> void:
 	wish.y = 0.0
 	if wish.length() > 0.01:
 		wish = wish.normalized()
-	velocity.x = wish.x * SPEED
-	velocity.z = wish.z * SPEED
 
+	# горизонтальное движение
+	global_position.x += wish.x * SPEED * delta
+	global_position.z += wish.z * SPEED * delta
+	global_position.x = clampf(global_position.x, -500.0, 500.0)
+	global_position.z = clampf(global_position.z, -500.0, 500.0)
+
+	# прыжок
 	var jump := Input.is_physical_key_pressed(KEY_SPACE)
 	if has_meta("mob_jump") and bool(get_meta("mob_jump")):
 		jump = true
 		set_meta("mob_jump", false)
-	if jump and is_on_floor():
-		velocity.y = JUMP_V
+	if jump and _grounded:
+		_vy = JUMP_V
+		_grounded = false
 
+	# вертикаль: гравитация + прилипание к рельефу
+	_vy -= GRAV * delta
+	global_position.y += _vy * delta
+	var gh := _ground_height()
+	if _vy <= 0.0 and (global_position.y - FEET) <= gh:
+		global_position.y = gh + FEET
+		_vy = 0.0
+		_grounded = true
+
+	# удар
 	var attack := Input.is_mouse_button_pressed(MOUSE_BUTTON_LEFT) or Input.is_physical_key_pressed(KEY_J)
 	if has_meta("mob_attack") and bool(get_meta("mob_attack")):
 		attack = true
@@ -98,14 +111,10 @@ func _physics_process(delta: float) -> void:
 	if attack and _attack_cd <= 0.0:
 		_attack()
 
-	# поесть (E)
 	if Input.is_physical_key_pressed(KEY_E):
 		GameState.eat()
-	# попить (Q)
 	if Input.is_physical_key_pressed(KEY_Q):
 		GameState.drink()
-
-	move_and_slide()
 
 
 func _attack() -> void:

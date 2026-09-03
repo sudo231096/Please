@@ -175,16 +175,18 @@ func _build_boar() -> void:
 	_box(Vector3(0.32, 0.6, 0.32), Vector3(0.5, 0.28, -0.65), dark)
 
 
+func _ground_height() -> float:
+	var terrain := get_tree().get_first_node_in_group("terrain")
+	if terrain and terrain.has_method("_ground_height"):
+		return terrain._ground_height(global_position.x, global_position.z)
+	return 0.0
+
+
 func _physics_process(delta: float) -> void:
 	if not is_instance_valid(_player):
 		_player = get_tree().get_first_node_in_group("player")
 		if not _player:
 			return
-	if not is_on_floor():
-		velocity.y -= GRAV * delta
-	else:
-		if velocity.y < 0.0:
-			velocity.y = 0.0
 
 	var to := _player.global_position - global_position
 	to.y = 0.0
@@ -205,8 +207,14 @@ func _physics_process(delta: float) -> void:
 			_wander_dir = Vector3(randf_range(-1, 1), 0, randf_range(-1, 1)).normalized()
 		dir = _wander_dir
 
-	velocity.x = dir.x * speed
-	velocity.z = dir.z * speed
+	# горизонтальное движение
+	global_position.x += dir.x * speed * delta
+	global_position.z += dir.z * speed * delta
+	global_position.x = clampf(global_position.x, -500.0, 500.0)
+	global_position.z = clampf(global_position.z, -500.0, 500.0)
+
+	# прилипание к рельефу
+	global_position.y = _ground_height()
 
 	if dist > 0.05 and dir.length() > 0.05:
 		look_at(global_position + dir, Vector3.UP)
@@ -216,8 +224,6 @@ func _physics_process(delta: float) -> void:
 	if contact_dmg > 0.0 and dist < 1.6 and _hit_cd <= 0.0:
 		_player.take_damage(contact_dmg)
 		_hit_cd = 1.0
-
-	move_and_slide()
 
 
 func take_damage(amount: float) -> void:
