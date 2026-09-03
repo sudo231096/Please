@@ -268,7 +268,8 @@ func take_resource(name: String, n: int) -> void:
 
 
 func can_craft(id: String) -> bool:
-	if not recipe_unlocked(id):
+	# рецепты доступны сразу (без изучения дерева технологий) — нужны только ресурсы
+	if not RECIPES.has(id):
 		return false
 	var cost: Dictionary = RECIPES[id]["cost"]
 	for r in cost:

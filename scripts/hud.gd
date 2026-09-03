@@ -12,7 +12,6 @@ var _slots: Array = []
 var _over: Control
 var _craft: Control
 var _craft_list: VBoxContainer
-var _tech_list: VBoxContainer
 
 
 func bind(p: Node3D) -> void:
@@ -412,34 +411,6 @@ func _build_craft_menu() -> void:
 	_craft_list.add_theme_constant_override("separation", 6)
 	v.add_child(_craft_list)
 
-	var up_sep := HSeparator.new()
-	v.add_child(up_sep)
-
-	var up_title := Label.new()
-	up_title.text = "ДЕРЕВО ТЕХНОЛОГИЙ (за скрап)"
-	up_title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	up_title.add_theme_font_size_override("font_size", 18)
-	up_title.modulate = Color(0.7, 0.85, 1.0)
-	v.add_child(up_title)
-
-	_tech_list = VBoxContainer.new()
-	_tech_list.add_theme_constant_override("separation", 4)
-	v.add_child(_tech_list)
-
-	# кнопки технологий (создаются один раз)
-	for tid in GameState.TECH_TREE:
-		var tbtn := Button.new()
-		tbtn.focus_mode = Control.FOCUS_NONE
-		tbtn.add_theme_font_size_override("font_size", 15)
-		var k: String = tid
-		tbtn.pressed.connect(func() -> void:
-			if GameState.research(k):
-				_refresh_craft()
-				refresh()
-		)
-		tbtn.name = "tech_" + tid
-		_tech_list.add_child(tbtn)
-
 	var close := Button.new()
 	close.text = "Закрыть"
 	close.focus_mode = Control.FOCUS_NONE
@@ -455,10 +426,8 @@ func _refresh_craft() -> void:
 	var res_label := _craft.find_child("ResLabel", true, false) as Label
 	if res_label:
 		res_label.text = "Дерево:%d  Камень:%d  Сера:%d  Железо:%d  Скрап:%d" % [GameState.wood, GameState.stone, GameState.sulfur, GameState.iron, GameState.scrap]
-	# кнопки рецептов (показываем только изученные)
+	# кнопки рецептов (все доступны сразу)
 	for id in GameState.RECIPES:
-		if not GameState.recipe_unlocked(id):
-			continue
 		var rec: Dictionary = GameState.RECIPES[id]
 		var btn := Button.new()
 		btn.focus_mode = Control.FOCUS_NONE
@@ -478,28 +447,6 @@ func _refresh_craft() -> void:
 				refresh()
 		)
 		_craft_list.add_child(btn)
-	# обновить дерево технологий
-	_refresh_tech()
-
-
-func _refresh_tech() -> void:
-	for tid in GameState.TECH_TREE:
-		var tbtn := _tech_list.find_child("tech_" + tid, true, false) as Button
-		if not tbtn:
-			continue
-		var t: Dictionary = GameState.TECH_TREE[tid]
-		if GameState.is_tech_learned(tid):
-			tbtn.text = "✓ " + t["name"]
-			tbtn.disabled = true
-			tbtn.modulate = Color(0.6, 1.0, 0.6)
-		elif GameState.tech_available(tid):
-			tbtn.text = t["name"] + "  —  " + str(t["cost"]) + " скрапа"
-			tbtn.disabled = GameState.scrap < int(t["cost"])
-			tbtn.modulate = Color(1, 1, 1) if GameState.scrap >= int(t["cost"]) else Color(0.5, 0.5, 0.5)
-		else:
-			tbtn.text = "🔒 " + t["name"] + " (нужно предыдущее)"
-			tbtn.disabled = true
-			tbtn.modulate = Color(0.45, 0.45, 0.45)
 
 
 func _on_died() -> void:

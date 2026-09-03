@@ -51,8 +51,11 @@ func _ready() -> void:
 
 func _ground_height(x: float, z: float) -> float:
 	var h := 0.0
-	h += 1.8 * sin(x * 0.006 + 1.3) * cos(z * 0.007 + 0.7)
-	h += 1.1 * sin(x * 0.013 + 0.5) * sin(z * 0.011 + 2.1)
+	# многослойный шум — холмистая местность как в Rust
+	h += 2.5 * sin(x * 0.006 + 1.3) * cos(z * 0.007 + 0.7)
+	h += 1.5 * sin(x * 0.013 + 0.5) * sin(z * 0.011 + 2.1)
+	h += 0.8 * sin(x * 0.027 + 0.2) * cos(z * 0.023 + 1.6)
+	h += 0.4 * sin(x * 0.051 + 3.0) * sin(z * 0.047 + 0.9)
 	for p in MOUNTAINS:
 		var dx: float = x - p[0]
 		var dz: float = z - p[1]
@@ -321,6 +324,17 @@ func _random_spot(min_r: float) -> Vector3:
 	return Vector3(x, _ground_height(x, z), z)
 
 
+func _grid_spot(grid_size: float, jitter: float) -> Vector3:
+	# равномерное распределение по сетке (как в Rust — ресурсы разбросаны по всей карте)
+	var cols := int(TERRAIN_SIZE / grid_size)
+	var cell := int(TERRAIN_SIZE / float(cols))
+	var cx := _rng.randi_range(0, cols - 1)
+	var cz := _rng.randi_range(0, cols - 1)
+	var x := -HALF + (cx + 0.5) * cell + _rng.randf_range(-jitter, jitter)
+	var z := -HALF + (cz + 0.5) * cell + _rng.randf_range(-jitter, jitter)
+	return Vector3(x, _ground_height(x, z), z)
+
+
 # ---------- деревья / камни / руды / трава (MultiMesh — оптимизация) ----------
 
 func _build_trees() -> void:
@@ -328,11 +342,12 @@ func _build_trees() -> void:
 	var mm := MultiMesh.new()
 	mm.transform_format = MultiMesh.TRANSFORM_3D
 	mm.mesh = mesh
-	mm.instance_count = 200
+	mm.instance_count = 350
 	_tree_spots.clear()
-	for i in range(200):
-		var pos := _random_spot(12.0)
-		var big := _rng.randf() < 0.35  # ~35% большие деревья
+	for i in range(350):
+		# равномерно по карте, ближе друг к другу
+		var pos := _grid_spot(28.0, 10.0)
+		var big := _rng.randf() < 0.35
 		var s := _rng.randf_range(2.2, 3.2) if big else _rng.randf_range(0.7, 1.6)
 		var t := Transform3D(Basis(Vector3.UP, _rng.randf() * TAU), pos + Vector3(0, -0.1, 0))
 		t = t.scaled(Vector3(s, s, s))
@@ -350,10 +365,10 @@ func _build_rocks() -> void:
 	var mm := MultiMesh.new()
 	mm.transform_format = MultiMesh.TRANSFORM_3D
 	mm.mesh = _make_rock_mesh()
-	mm.instance_count = 80
+	mm.instance_count = 160
 	_rock_spots.clear()
-	for i in range(80):
-		var pos := _random_spot(8.0)
+	for i in range(160):
+		var pos := _grid_spot(24.0, 9.0)
 		var s := _rng.randf_range(0.6, 2.2)
 		var t := Transform3D(Basis(Vector3.UP, _rng.randf() * TAU), pos + Vector3(0, 0.15 * s, 0))
 		t = t.scaled(Vector3(s, s * _rng.randf_range(0.6, 1.0), s))
@@ -386,15 +401,18 @@ func _build_grass() -> void:
 
 
 func _build_ores() -> void:
-	# руды: 0=сера (жёлтая), 1=железо (тёмная), 2=камень (светлая), 3=металл (блестящая)
+	# руды: 0=сера (жёлтые валуны), 1=железо (тёмная), 2=камень (светлая), 3=металл (блестящая)
 	_ore_spots.clear()
-	for i in range(30):
-		var pos := _random_spot(10.0)
+	for i in range(60):
+		var pos := _grid_spot(20.0, 8.0)
 		var kind := _rng.randi_range(0, 3)
-		_ore_spots.append({"pos": pos, "kind": kind, "alive": true})
+		var container := Node3D.new()
+		container.position = pos
+		add_child(container)
+		_ore_spots.append({"pos": pos, "kind": kind, "alive": true, "node": container})
 		match kind:
 			0:
-				_ore_crystal(pos, Color(1.0, 0.85, 0.2), Color(1.0, 0.8, 0.15))
+				_sulfur_boulder_in(pos, container)
 			1:
 				var r := _rng.randf_range(0.5, 1.0)
 				var ore := MeshInstance3D.new()
@@ -403,17 +421,17 @@ func _build_ores() -> void:
 				sm.height = r * 1.4
 				ore.mesh = sm
 				ore.material_override = _mat(Color(0.25, 0.22, 0.2))
-				ore.position = Vector3(pos.x, pos.y + r * 0.5, pos.z)
+				ore.position = Vector3(0, r * 0.5, 0)
 				ore.scale = Vector3(1, _rng.randf_range(0.6, 0.9), 1)
-				add_child(ore)
+				container.add_child(ore)
 				var vein := MeshInstance3D.new()
 				var sm2 := SphereMesh.new()
 				sm2.radius = r * 0.4
 				sm2.height = r * 0.8
 				vein.mesh = sm2
 				vein.material_override = _mat(Color(0.6, 0.3, 0.1))
-				vein.position = Vector3(pos.x + r * 0.3, pos.y + r * 0.6, pos.z)
-				add_child(vein)
+				vein.position = Vector3(r * 0.3, r * 0.6, 0)
+				container.add_child(vein)
 			2:
 				var r2 := _rng.randf_range(0.6, 1.2)
 				var stone := MeshInstance3D.new()
@@ -422,11 +440,10 @@ func _build_ores() -> void:
 				sm3.height = r2 * 1.5
 				stone.mesh = sm3
 				stone.material_override = _mat(Color(0.55, 0.55, 0.6))
-				stone.position = Vector3(pos.x, pos.y + r2 * 0.4, pos.z)
+				stone.position = Vector3(0, r2 * 0.4, 0)
 				stone.scale = Vector3(1, _rng.randf_range(0.5, 0.85), 1)
-				add_child(stone)
+				container.add_child(stone)
 			3:
-				# металл: блестящая руда
 				var r3 := _rng.randf_range(0.5, 1.0)
 				var metal := MeshInstance3D.new()
 				var sm4 := SphereMesh.new()
@@ -434,8 +451,32 @@ func _build_ores() -> void:
 				sm4.height = r3 * 1.3
 				metal.mesh = sm4
 				metal.material_override = _mat(Color(0.55, 0.58, 0.62), Color(0.3, 0.35, 0.4))
-				metal.position = Vector3(pos.x, pos.y + r3 * 0.4, pos.z)
-				add_child(metal)
+				metal.position = Vector3(0, r3 * 0.4, 0)
+				container.add_child(metal)
+
+
+func _sulfur_boulder_in(pos: Vector3, parent: Node3D) -> void:
+	# крупный жёлтый валун серы (в контейнере)
+	var r := _rng.randf_range(0.7, 1.3)
+	var b := MeshInstance3D.new()
+	var sm := SphereMesh.new()
+	sm.radius = r
+	sm.height = r * 1.5
+	b.mesh = sm
+	b.material_override = _mat(Color(1.0, 0.8, 0.15), Color(0.8, 0.6, 0.05))
+	b.position = Vector3(0, r * 0.5, 0)
+	b.scale = Vector3(1, _rng.randf_range(0.5, 0.8), 1)
+	parent.add_child(b)
+	for i in range(3):
+		var c := MeshInstance3D.new()
+		var cm := CylinderMesh.new()
+		cm.top_radius = 0.04
+		cm.bottom_radius = 0.16
+		cm.height = _rng.randf_range(0.3, 0.6)
+		c.mesh = cm
+		c.material_override = _mat(Color(1.0, 0.9, 0.3), Color(1.0, 0.7, 0.1))
+		c.position = Vector3(_rng.randf_range(-0.4, 0.4), r * 0.6, _rng.randf_range(-0.4, 0.4))
+		parent.add_child(c)
 
 
 func _ore_crystal(pos: Vector3, color: Color, emissive: Color) -> void:
@@ -465,6 +506,47 @@ func _spawn_player() -> void:
 		pos = _random_spot(20.0)
 	_player.position = Vector3(pos.x, pos.y + 1.0, pos.z)
 	add_child(_player)
+	# гарантируем ресурсы рядом со спавном (чтобы сразу было что добывать)
+	_spawn_guaranteed_resources(pos)
+
+
+func _spawn_guaranteed_resources(center: Vector3) -> void:
+	# отдельные деревья, камни и сера вокруг точки спавна
+	for i in range(6):
+		var a := TAU * i / 6.0
+		var r := 7.0
+		var dx := center.x + cos(a) * r
+		var dz := center.z + sin(a) * r
+		var tp := Vector3(dx, _ground_height(dx, dz), dz)
+		var tree := MeshInstance3D.new()
+		tree.mesh = _make_tree_mesh()
+		tree.material_override = _vertex_color_material()
+		tree.position = tp + Vector3(0, -0.1, 0)
+		tree.scale = Vector3.ONE * 1.2
+		add_child(tree)
+		_tree_spots.append({"pos": tp, "index": -1, "alive": true, "big": false, "node": tree})
+	# пара камней
+	for i in range(3):
+		var a := TAU * i / 3.0 + 0.5
+		var dx := center.x + cos(a) * 9.0
+		var dz := center.z + sin(a) * 9.0
+		var rp := Vector3(dx, _ground_height(dx, dz), dz)
+		var rock := MeshInstance3D.new()
+		rock.mesh = _make_rock_mesh()
+		rock.material_override = _vertex_color_material()
+		rock.position = rp + Vector3(0, 0.15, 0)
+		rock.scale = Vector3.ONE * 1.3
+		add_child(rock)
+		_rock_spots.append({"pos": rp, "index": -1, "alive": true, "node": rock})
+	# валун серы
+	var sx := center.x + 6.0
+	var sz := center.z + 6.0
+	var sp := Vector3(sx, _ground_height(sx, sz), sz)
+	var scont := Node3D.new()
+	scont.position = sp
+	add_child(scont)
+	_sulfur_boulder_in(sp, scont)
+	_ore_spots.append({"pos": sp, "kind": 0, "alive": true, "node": scont})
 
 
 func _build_hud() -> void:
@@ -514,9 +596,9 @@ func _on_animal_died(kind: int) -> void:
 # ---------- добыча ресурсов ----------
 
 func _harvest(origin: Vector3, look_dir: Vector3) -> String:
-	# ищем ближайший объект в радиусе 3 м перед игроком
+	# ищем ближайший объект в радиусе 4.5 м перед игроком
 	var best := ""
-	var best_d := 3.0
+	var best_d := 4.5
 	# деревья
 	for t in _tree_spots:
 		if not t["alive"]:
@@ -549,10 +631,9 @@ func _harvest(origin: Vector3, look_dir: Vector3) -> String:
 			for t in _tree_spots:
 				if t["alive"] and (t["pos"] - origin).length() <= best_d + 0.1:
 					t["alive"] = false
-					# большое дерево даёт больше дерева
 					var amt := 60 if t.get("big", false) else 25
 					GameState.add_resource("wood", int(amt * GameState.harvest_bonus()))
-					_hide_mm(_trees_mm, t["index"])
+					_remove_resource(t, _trees_mm)
 					if _hud:
 						_hud.refresh()
 					return "wood"
@@ -561,7 +642,7 @@ func _harvest(origin: Vector3, look_dir: Vector3) -> String:
 				if r["alive"] and (r["pos"] - origin).length() <= best_d + 0.1:
 					r["alive"] = false
 					GameState.add_resource("stone", int(20.0 * GameState.mining_bonus()))
-					_hide_mm(_rocks_mm, r["index"])
+					_remove_resource(r, _rocks_mm)
 					if _hud:
 						_hud.refresh()
 					return "stone"
@@ -578,18 +659,22 @@ func _harvest(origin: Vector3, look_dir: Vector3) -> String:
 					else:
 						GameState.add_resource("metal", int(10.0 * GameState.mining_bonus()))
 						GameState.add_resource("scrap", int(3.0 * GameState.mining_bonus()))
+					_remove_resource(o, null)
 					if _hud:
 						_hud.refresh()
 					return "ore"
 	return ""
 
 
-func _hide_mm(mm: MultiMesh, index: int) -> void:
-	# скрыть экземпляр (масштаб 0)
-	var t := mm.get_instance_transform(index)
-	t.basis = Basis.IDENTITY.scaled(Vector3.ZERO)
-	mm.set_instance_transform(index, t)
-
+func _remove_resource(spot: Dictionary, mm: MultiMesh) -> void:
+	# если есть отдельный node (гарантированные ресурсы) — удаляем его
+	if spot.has("node") and spot["node"] is Node3D:
+		(spot["node"] as Node3D).queue_free()
+	# иначе скрываем экземпляр MultiMesh
+	elif mm and int(spot["index"]) >= 0:
+		var t := mm.get_instance_transform(int(spot["index"]))
+		t.basis = Basis.IDENTITY.scaled(Vector3.ZERO)
+		mm.set_instance_transform(int(spot["index"]), t)
 
 # ---------- строительство ----------
 

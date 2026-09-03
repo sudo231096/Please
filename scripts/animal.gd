@@ -128,7 +128,7 @@ func _build_bear() -> void:
 	# скачанная модель медведя (с автоподгонкой по габаритам)
 	_model = preload("res://models/bear.glb").instantiate()
 	add_child(_model)
-	_fit_model(_model, 2.0)
+	_fit_model(_model, 3.2)  # крупный медведь
 
 
 func _fit_model(m: Node3D, target_height: float) -> void:

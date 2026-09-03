@@ -135,7 +135,7 @@ func _build() -> void:
 
 
 func _build_status(id: String) -> String:
-	if GameState.recipe_unlocked(id):
+	if true:  # рецепты доступны сразу (без изучения)
 		var built: int = GameState.built.get(id, 0)
 		return "построено %d" % built if built > 0 else "доступно"
 	return "закрыто"
