@@ -5,7 +5,7 @@ const PlayerScr := preload("res://scripts/player.gd")
 const AnimalScr := preload("res://scripts/animal.gd")
 const HudScr := preload("res://scripts/hud.gd")
 
-const AREA := 90.0  # большая карта
+const AREA := 600.0  # большая карта (в 10 раз больше)
 
 var _player: CharacterBody3D
 var _hud: CanvasLayer
@@ -74,9 +74,11 @@ func _build_sky() -> void:
 
 
 func _build_ground() -> void:
-	# скачанная карта-террейн (Badlands) как земля
+	# скачанная карта-террейн (Badlands) как земля.
+	# Модель уже повёрнута внутри (ось Z вверх) — НЕ крутим её снова.
+	# Масштабируем XZ сильно (большая карта), а высоту Y — слабо (мягкий рельеф ~7м).
 	var terrain: Node3D = preload("res://models/terrain.glb").instantiate()
-	terrain.scale = Vector3.ONE * 60.0  # террейн 2x2 м -> 120x120 м
+	terrain.scale = Vector3(500, 30, 500)  # 1000x1000 м, рельеф ~7 м
 	terrain.position = Vector3(0, 0, 0)
 	add_child(terrain)
 
@@ -94,34 +96,19 @@ func _build_ground() -> void:
 
 
 func _build_trees() -> void:
-	for i in range(60):
-		var pos := _random_spot(8.0)
+	for i in range(160):
+		var pos := _random_spot(10.0)
 		_tree(pos)
 
 
 func _tree(pos: Vector3) -> void:
-	var h := _rng.randf_range(3.5, 6.5)
-	var trunk := MeshInstance3D.new()
-	var cm := CylinderMesh.new()
-	cm.top_radius = 0.14
-	cm.bottom_radius = 0.2
-	cm.height = h
-	trunk.mesh = cm
-	trunk.material_override = _mat(Color(0.35, 0.24, 0.12))
-	trunk.position = pos + Vector3(0, h * 0.5, 0)
-	add_child(trunk)
-	# пышная крона из нескольких сфер
-	var crown_c := Color(0.2, 0.38, 0.16)
-	var r0 := _rng.randf_range(1.0, 1.5)
-	for j in range(3):
-		var crown := MeshInstance3D.new()
-		var sm := SphereMesh.new()
-		sm.radius = r0 * (1.0 - j * 0.25)
-		sm.height = sm.radius * 2.0
-		crown.mesh = sm
-		crown.material_override = _mat(crown_c.darkened(j * 0.1))
-		crown.position = pos + Vector3(_rng.randf_range(-0.4, 0.4), h + 0.4 + j * 0.4, _rng.randf_range(-0.4, 0.4))
-		add_child(crown)
+	# скачанная low-poly модель ёлки
+	var tree: Node3D = preload("res://models/tree.glb").instantiate()
+	tree.position = pos
+	var s := _rng.randf_range(1.5, 3.0)
+	tree.scale = Vector3.ONE * s
+	add_child(tree)
+	_fit_flat(tree)
 
 
 func _build_rocks() -> void:
@@ -210,6 +197,26 @@ func _build_grass() -> void:
 		blade.material_override = _mat(Color(0.5, 0.45, 0.2))
 		blade.position = Vector3(pos.x, cm.height * 0.5, pos.z)
 		add_child(blade)
+
+
+func _fit_flat(m: Node3D) -> void:
+	# поставить модель на землю (низ на y=0) по её габаритам
+	await get_tree().process_frame
+	await get_tree().process_frame
+	var mn := Vector3(1e9, 1e9, 1e9)
+	var mx := Vector3(-1e9, -1e9, -1e9)
+	for mesh in m.find_children("*", "MeshInstance3D", true, false):
+		var aabb: AABB = mesh.mesh.get_aabb()
+		var t: Transform3D = mesh.global_transform
+		for i in range(8):
+			var p: Vector3 = aabb.position + Vector3(
+				aabb.size.x if (i & 1) != 0 else 0.0,
+				aabb.size.y if (i & 2) != 0 else 0.0,
+				aabb.size.z if (i & 4) != 0 else 0.0)
+			p = t * p
+			mn = mn.min(p)
+			mx = mx.max(p)
+	m.position.y += -mn.y
 
 
 func _random_spot(min_r: float) -> Vector3:
