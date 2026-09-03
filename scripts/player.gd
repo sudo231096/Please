@@ -15,6 +15,9 @@ var _attack_cd := 0.0
 var _hurt_cd := 0.0
 var _vy := 0.0
 var _grounded := true
+var _bob_t := 0.0          # для покачивания при ходьбе
+var _swing_t := 0.0        # для анимации удара (замах камеры)
+var _base_cam := Vector3(0, EYE_HEIGHT, 0)
 
 signal died
 
@@ -116,9 +119,35 @@ func _physics_process(delta: float) -> void:
 	if Input.is_physical_key_pressed(KEY_Q):
 		GameState.drink()
 
+	_animate_cam(delta, wish.length())
+
+
+func _animate_cam(delta: float, moving: float) -> void:
+	# head bob — покачивание камеры при ходьбе (как в Rust)
+	if moving > 0.1 and _grounded:
+		_bob_t += delta * 10.0
+		var bob_y := sin(_bob_t) * 0.05 * moving
+		var bob_x := cos(_bob_t * 0.5) * 0.03 * moving
+		_base_cam = Vector3(bob_x, EYE_HEIGHT + bob_y, 0)
+	else:
+		_bob_t = 0.0
+		_base_cam = _base_cam.lerp(Vector3(0, EYE_HEIGHT, 0), delta * 10.0)
+
+	# анимация удара — замах камеры вниз
+	if _swing_t > 0.0:
+		_swing_t -= delta
+		var k := _swing_t / 0.28  # 1 -> 0
+		var dip := sin(k * PI) * 0.12
+		_cam.position = _base_cam + Vector3(0, -dip, 0)
+		_cam.rotation.z = sin(k * PI) * 0.06
+	else:
+		_cam.position = _base_cam
+		_cam.rotation.z = 0.0
+
 
 func _attack() -> void:
 	_attack_cd = ATTACK_CD
+	_swing_t = 0.28  # замах
 	var fwd := -_cam.global_transform.basis.z
 	fwd.y = 0.0
 	fwd = fwd.normalized()
