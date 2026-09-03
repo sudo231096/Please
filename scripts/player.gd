@@ -2,12 +2,14 @@ extends CharacterBody3D
 ## Игрок (от первого лица): выживание в пустоши, ходьба по рельефу.
 
 const SPEED := 6.0
+const CROUCH_SPEED := 2.5
 const JUMP_V := 5.2
 const GRAV := 14.0
 const ATTACK_RANGE := 2.6
 const ATTACK_DMG := 30.0
 const ATTACK_CD := 0.55
 const EYE_HEIGHT := 1.7
+const CROUCH_EYE := 1.0
 const FEET := 0.85  # смещение от центра до подошв
 
 var _cam: Camera3D
@@ -15,9 +17,11 @@ var _attack_cd := 0.0
 var _hurt_cd := 0.0
 var _vy := 0.0
 var _grounded := true
-var _bob_t := 0.0          # для покачивания при ходьбе
-var _swing_t := 0.0        # для анимации удара (замах камеры)
+var _bob_t := 0.0
+var _swing_t := 0.0
 var _base_cam := Vector3(0, EYE_HEIGHT, 0)
+var _crouching := false
+var _target_eye := EYE_HEIGHT
 
 signal died
 
@@ -82,9 +86,25 @@ func _physics_process(delta: float) -> void:
 	if wish.length() > 0.01:
 		wish = wish.normalized()
 
+	# присест: клавиша Ctrl или кнопка на телефоне
+	var crouch := Input.is_physical_key_pressed(KEY_CTRL)
+	if has_meta("mob_crouch") and bool(get_meta("mob_crouch")):
+		crouch = true
+	if crouch:
+		if not _crouching:
+			_crouching = true
+			_target_eye = CROUCH_EYE
+	else:
+		if _crouching:
+			_crouching = false
+			_target_eye = EYE_HEIGHT
+
+	# скорость: при приседе медленнее
+	var spd := CROUCH_SPEED if _crouching else SPEED
+
 	# горизонтальное движение
-	global_position.x += wish.x * SPEED * delta
-	global_position.z += wish.z * SPEED * delta
+	global_position.x += wish.x * spd * delta
+	global_position.z += wish.z * spd * delta
 	global_position.x = clampf(global_position.x, -500.0, 500.0)
 	global_position.z = clampf(global_position.z, -500.0, 500.0)
 
@@ -106,8 +126,10 @@ func _physics_process(delta: float) -> void:
 		_vy = 0.0
 		_grounded = true
 
-	# удар
-	var attack := Input.is_mouse_button_pressed(MOUSE_BUTTON_LEFT) or Input.is_physical_key_pressed(KEY_J)
+	# удар: на десктопе — ЛКМ или J; на телефоне — только кнопка «УДАР» (тап по экрану НЕ атакует)
+	var attack := false
+	if not DisplayServer.is_touchscreen_available():
+		attack = Input.is_mouse_button_pressed(MOUSE_BUTTON_LEFT) or Input.is_physical_key_pressed(KEY_J)
 	if has_meta("mob_attack") and bool(get_meta("mob_attack")):
 		attack = true
 		set_meta("mob_attack", false)
@@ -123,15 +145,16 @@ func _physics_process(delta: float) -> void:
 
 
 func _animate_cam(delta: float, moving: float) -> void:
-	# head bob — покачивание камеры при ходьбе (как в Rust)
+	# плавное изменение высоты глаз (присед)
+	var eye := _target_eye
 	if moving > 0.1 and _grounded:
 		_bob_t += delta * 10.0
 		var bob_y := sin(_bob_t) * 0.05 * moving
 		var bob_x := cos(_bob_t * 0.5) * 0.03 * moving
-		_base_cam = Vector3(bob_x, EYE_HEIGHT + bob_y, 0)
+		_base_cam = Vector3(bob_x, eye + bob_y, 0)
 	else:
 		_bob_t = 0.0
-		_base_cam = _base_cam.lerp(Vector3(0, EYE_HEIGHT, 0), delta * 10.0)
+		_base_cam = _base_cam.lerp(Vector3(0, eye, 0), delta * 12.0)
 
 	# анимация удара — замах камеры вниз
 	if _swing_t > 0.0:

@@ -200,7 +200,24 @@ func _build() -> void:
 	drink.pressed.connect(func() -> void: GameState.drink(); refresh())
 	add_child(drink)
 
-	# кнопка крафта
+	# кнопка приседа
+	var crouch := Button.new()
+	crouch.text = "СЕСТЬ"
+	crouch.focus_mode = Control.FOCUS_NONE
+	crouch.anchor_left = side_anchor
+	crouch.anchor_right = side_anchor
+	crouch.anchor_top = 1.0
+	crouch.anchor_bottom = 1.0
+	crouch.offset_left = -250 if on_right else 100
+	crouch.offset_right = -100 if on_right else 250
+	crouch.offset_top = -300
+	crouch.offset_bottom = -200
+	crouch.add_theme_font_size_override("font_size", 20)
+	crouch.button_down.connect(func() -> void: _player.set_meta("mob_crouch", true))
+	crouch.button_up.connect(func() -> void: _player.set_meta("mob_crouch", false))
+	add_child(crouch)
+
+	# кнопка крафта (выше)
 	var craft_btn := Button.new()
 	craft_btn.text = "КРАФТ"
 	craft_btn.focus_mode = Control.FOCUS_NONE
@@ -210,8 +227,8 @@ func _build() -> void:
 	craft_btn.anchor_bottom = 1.0
 	craft_btn.offset_left = -250 if on_right else 100
 	craft_btn.offset_right = -100 if on_right else 250
-	craft_btn.offset_top = -300
-	craft_btn.offset_bottom = -200
+	craft_btn.offset_top = -400
+	craft_btn.offset_bottom = -300
 	craft_btn.add_theme_font_size_override("font_size", 20)
 	craft_btn.modulate = Color(0.8, 0.65, 0.4)
 	craft_btn.pressed.connect(func() -> void:
@@ -378,16 +395,25 @@ func _refresh_craft() -> void:
 		var btn := Button.new()
 		btn.focus_mode = Control.FOCUS_NONE
 		btn.add_theme_font_size_override("font_size", 18)
-		# стоимость строкой
 		var cost_txt := ""
 		for r in rec["cost"]:
 			cost_txt += " %s:%d" % [r, rec["cost"][r]]
 		btn.text = rec["name"] + "  (" + cost_txt.strip_edges() + ")"
 		btn.disabled = not GameState.can_craft(id)
+		var rid: String = id
 		btn.pressed.connect(func() -> void:
-			GameState.craft(id)
-			_refresh_craft()
-			refresh()
+			if GameState.craft(rid):
+				# если это постройка — ставим её в мире перед игроком
+				if rec["type"] == "build":
+					var terrain := get_tree().get_first_node_in_group("terrain")
+					if terrain and terrain.has_method("_place_building") and _player:
+						var fwd := -(_player as Node3D).global_transform.basis.z
+						fwd.y = 0.0
+						fwd = fwd.normalized()
+						terrain._place_building(rid, _player.global_position, fwd)
+						_craft.visible = false
+				_refresh_craft()
+				refresh()
 		)
 		_craft_list.add_child(btn)
 

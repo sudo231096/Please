@@ -561,3 +561,59 @@ func _hide_mm(mm: MultiMesh, index: int) -> void:
 	var t := mm.get_instance_transform(index)
 	t.basis = Basis.IDENTITY.scaled(Vector3.ZERO)
 	mm.set_instance_transform(index, t)
+
+
+# ---------- строительство ----------
+
+func _place_building(kind: String, origin: Vector3, look_dir: Vector3) -> void:
+	# точка постройки: в 2 метрах перед игроком, на рельефе
+	var px := origin.x + look_dir.x * 2.0
+	var pz := origin.z + look_dir.z * 2.0
+	var py := _ground_height(px, pz)
+	var pos := Vector3(px, py, pz)
+
+	match kind:
+		"campfire":
+			# костёр: камни по кругу + пламя
+			for i in range(6):
+				var a := TAU * i / 6.0
+				var rock := MeshInstance3D.new()
+				var sm := SphereMesh.new()
+				sm.radius = 0.15
+				sm.height = 0.3
+				rock.mesh = sm
+				rock.material_override = _mat(Color(0.4, 0.4, 0.42))
+				rock.position = pos + Vector3(cos(a) * 0.5, 0.1, sin(a) * 0.5)
+				add_child(rock)
+			var fire := MeshInstance3D.new()
+			var fsm := SphereMesh.new()
+			fsm.radius = 0.25
+			fsm.height = 0.7
+			fire.mesh = fsm
+			fire.material_override = _mat(Color(1.0, 0.5, 0.1), Color(1.0, 0.4, 0.05))
+			fire.position = pos + Vector3(0, 0.4, 0)
+			add_child(fire)
+		"furnace":
+			_box_at(pos, Vector3(1.0, 1.2, 1.0), Color(0.3, 0.3, 0.32))
+			_box_at(pos + Vector3(0, 1.4, 0), Vector3(0.3, 0.5, 0.3), Color(0.25, 0.25, 0.28))
+		"wall":
+			_box_at(pos, Vector3(2.5, 2.5, 0.2), Color(0.42, 0.3, 0.16))
+		"floor":
+			_box_at(pos + Vector3(0, -0.05, 0), Vector3(2.5, 0.1, 2.5), Color(0.45, 0.33, 0.18))
+		"door":
+			_box_at(pos, Vector3(1.2, 2.2, 0.15), Color(0.42, 0.3, 0.16))
+			_box_at(pos + Vector3(0, 1.1, 0), Vector3(0.1, 2.2, 0.25), Color(0.35, 0.25, 0.14))
+		"bag":
+			# спальник
+			_box_at(pos, Vector3(0.9, 0.2, 2.0), Color(0.2, 0.35, 0.25))
+			_box_at(pos + Vector3(0, 0.25, -0.9), Vector3(0.9, 0.25, 0.4), Color(0.15, 0.28, 0.2))
+
+
+func _box_at(pos: Vector3, size: Vector3, color: Color) -> void:
+	var m := MeshInstance3D.new()
+	var bm := BoxMesh.new()
+	bm.size = size
+	m.mesh = bm
+	m.material_override = _mat(color)
+	m.position = pos + Vector3(0, size.y * 0.5, 0)
+	add_child(m)
