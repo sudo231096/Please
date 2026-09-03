@@ -37,11 +37,23 @@ func _mat(color: Color, emissive := Color(0, 0, 0, 0)) -> StandardMaterial3D:
 
 func _build_sky() -> void:
 	var env := Environment.new()
-	env.background_mode = Environment.BG_COLOR
-	env.background_color = Color(0.45, 0.6, 0.8)
-	env.ambient_light_source = Environment.AMBIENT_SOURCE_COLOR
-	env.ambient_light_color = Color(0.6, 0.62, 0.66)
+	env.background_mode = Environment.BG_SKY
+	var sky := Sky.new()
+	var skymat := ProceduralSkyMaterial.new()
+	skymat.sky_top_color = Color(0.3, 0.55, 0.9)
+	skymat.sky_horizon_color = Color(0.7, 0.8, 0.9)
+	skymat.ground_bottom_color = Color(0.3, 0.25, 0.2)
+	skymat.ground_horizon_color = Color(0.6, 0.6, 0.55)
+	skymat.sun_angle_max = 0.5
+	sky.sky_material = skymat
+	env.sky = sky
+	env.ambient_light_source = Environment.AMBIENT_SOURCE_SKY
 	env.ambient_light_energy = 1.0
+	# лёгкий туман для атмосферы
+	env.fog_enabled = true
+	env.fog_light_color = Color(0.6, 0.7, 0.8)
+	env.fog_density = 0.004
+	env.fog_sky_affect = 0.4
 	var we := WorldEnvironment.new()
 	we.environment = env
 	add_child(we)
@@ -62,6 +74,13 @@ func _build_sky() -> void:
 
 
 func _build_ground() -> void:
+	# скачанная карта-террейн (Badlands) как земля
+	var terrain: Node3D = preload("res://models/terrain.glb").instantiate()
+	terrain.scale = Vector3.ONE * 60.0  # террейн 2x2 м -> 120x120 м
+	terrain.position = Vector3(0, 0, 0)
+	add_child(terrain)
+
+	# коллизия пола (плоская, по габаритам)
 	var g := StaticBody3D.new()
 	g.collision_layer = 1
 	g.collision_mask = 0
@@ -72,14 +91,6 @@ func _build_ground() -> void:
 	col.shape = cs
 	col.position = Vector3(0, -0.25, 0)
 	g.add_child(col)
-
-	var m := MeshInstance3D.new()
-	var pm := PlaneMesh.new()
-	pm.size = Vector2(AREA * 2, AREA * 2)
-	m.mesh = pm
-	m.material_override = _mat(Color(0.36, 0.3, 0.2))
-	m.position = Vector3(0, -0.01, 0)
-	add_child(m)
 
 
 func _build_trees() -> void:

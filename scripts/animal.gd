@@ -125,17 +125,38 @@ func _build() -> void:
 
 
 func _build_bear() -> void:
-	var brown := Color(0.45, 0.3, 0.18)
-	var dark := Color(0.3, 0.2, 0.12)
-	_box(Vector3(1.1, 0.8, 1.6), Vector3(0, 0.7, 0), brown)
-	_sphere(0.42, Vector3(0, 1.25, -0.75), brown)
-	_sphere(0.16, Vector3(0, 1.2, -1.15), dark)
-	_sphere(0.13, Vector3(-0.28, 1.6, -0.7), dark)
-	_sphere(0.13, Vector3(0.28, 1.6, -0.7), dark)
-	_box(Vector3(0.28, 0.5, 0.28), Vector3(-0.45, 0.25, 0.55), dark)
-	_box(Vector3(0.28, 0.5, 0.28), Vector3(0.45, 0.25, 0.55), dark)
-	_box(Vector3(0.28, 0.5, 0.28), Vector3(-0.45, 0.25, -0.55), dark)
-	_box(Vector3(0.28, 0.5, 0.28), Vector3(0.45, 0.25, -0.55), dark)
+	# скачанная модель медведя (с автоподгонкой по габаритам)
+	_model = preload("res://models/bear.glb").instantiate()
+	add_child(_model)
+	_fit_model(_model, 1.6)
+
+
+func _fit_model(m: Node3D, target_height: float) -> void:
+	# измерить глобальные габариты и подогнать: масштаб под высоту, центровка, на землю
+	await get_tree().process_frame
+	await get_tree().process_frame
+	var origin := m.global_position
+	var mn := Vector3(1e9, 1e9, 1e9)
+	var mx := Vector3(-1e9, -1e9, -1e9)
+	for mesh in m.find_children("*", "MeshInstance3D", true, false):
+		var aabb: AABB = mesh.mesh.get_aabb()
+		var t: Transform3D = mesh.global_transform
+		for i in range(8):
+			var p: Vector3 = aabb.position + Vector3(
+				aabb.size.x if (i & 1) != 0 else 0.0,
+				aabb.size.y if (i & 2) != 0 else 0.0,
+				aabb.size.z if (i & 4) != 0 else 0.0)
+			p = t * p
+			mn = mn.min(p)
+			mx = mx.max(p)
+	var h := mx.y - mn.y
+	if h > 0.001:
+		var s := target_height / h
+		var center := (mn + mx) * 0.5
+		m.scale = Vector3.ONE * s
+		# после масштабирования вокруг origin центр станет origin + (center-origin)*s
+		var desired := origin + Vector3(0, target_height * 0.5, 0)
+		m.position = desired - (origin + (center - origin) * s)
 
 
 func _build_boar() -> void:
