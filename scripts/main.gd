@@ -1,21 +1,21 @@
 extends Node3D
-## Пустошь в духе Rust: выживание от первого лица, ландшафт с холмами и горами.
+## Пустошь в духе Rust: выживание от первого лица, оптимизированный ландшафт.
 
 const PlayerScr := preload("res://scripts/player.gd")
 const AnimalScr := preload("res://scripts/animal.gd")
 const HudScr := preload("res://scripts/hud.gd")
 
 const TERRAIN_N := 128        # ячеек на сторону
-const TERRAIN_SIZE := 1024.0  # метров (карта 1024x1024)
-const TERRAIN_CELL := TERRAIN_SIZE / float(TERRAIN_N)  # 8 м на ячейку
+const TERRAIN_SIZE := 1024.0  # метров
+const TERRAIN_CELL := TERRAIN_SIZE / float(TERRAIN_N)
 const HALF := TERRAIN_SIZE * 0.5
 
-# горы: [x, z, высота, радиус]
+# горы: [x, z, высота, радиус] (чуть ниже, чем раньше)
 const MOUNTAINS := [
-	[200.0, 200.0, 16.0, 60.0],
-	[-280.0, -150.0, 20.0, 70.0],
-	[120.0, -320.0, 14.0, 55.0],
-	[-100.0, 300.0, 18.0, 65.0],
+	[200.0, 200.0, 13.0, 60.0],
+	[-280.0, -150.0, 16.0, 70.0],
+	[120.0, -320.0, 11.0, 55.0],
+	[-100.0, 300.0, 14.0, 65.0],
 ]
 
 var _player: CharacterBody3D
@@ -42,10 +42,8 @@ func _ready() -> void:
 
 func _ground_height(x: float, z: float) -> float:
 	var h := 0.0
-	# пологие холмы
-	h += 2.5 * sin(x * 0.006 + 1.3) * cos(z * 0.007 + 0.7)
-	h += 1.5 * sin(x * 0.013 + 0.5) * sin(z * 0.011 + 2.1)
-	# горы (гауссовы пики)
+	h += 1.8 * sin(x * 0.006 + 1.3) * cos(z * 0.007 + 0.7)
+	h += 1.1 * sin(x * 0.013 + 0.5) * sin(z * 0.011 + 2.1)
 	for p in MOUNTAINS:
 		var dx: float = x - p[0]
 		var dz: float = z - p[1]
@@ -63,6 +61,144 @@ func _mat(color: Color, emissive := Color(0, 0, 0, 0)) -> StandardMaterial3D:
 		m.emission = emissive
 	return m
 
+
+# ---------- геометрия для MultiMesh (вершинные цвета, без нормалей) ----------
+
+func _add_tri(verts: PackedVector3Array, cols: PackedColorArray, idx: PackedInt32Array, a: Vector3, b: Vector3, c: Vector3, color: Color) -> void:
+	var base := verts.size()
+	verts.append_array([a, b, c])
+	cols.append(color); cols.append(color); cols.append(color)
+	idx.append_array([base, base + 1, base + 2])
+
+
+func _make_tree_mesh() -> ArrayMesh:
+	var verts := PackedVector3Array()
+	var cols := PackedColorArray()
+	var idx := PackedInt32Array()
+	var brown := Color(0.42, 0.3, 0.16)
+	var green := Color(0.16, 0.38, 0.14)
+	# ствол (коробка)
+	var bs := Vector3(0.16, 1.1, 0.16)
+	var bc := Vector3(0, 0.55, 0)
+	_add_box(verts, cols, idx, bc, bs, brown)
+	# три яруса хвои (конусы)
+	_add_cone(verts, cols, idx, 0.95, 0.85, 1.3, green)
+	_add_cone(verts, cols, idx, 1.75, 0.62, 1.1, green.lightened(0.05))
+	_add_cone(verts, cols, idx, 2.45, 0.4, 0.9, green.lightened(0.1))
+	var am := ArrayMesh.new()
+	var arrays := []
+	arrays.resize(Mesh.ARRAY_MAX)
+	arrays[Mesh.ARRAY_VERTEX] = verts
+	arrays[Mesh.ARRAY_COLOR] = cols
+	arrays[Mesh.ARRAY_INDEX] = idx
+	am.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arrays)
+	return am
+
+
+func _add_box(verts: PackedVector3Array, cols: PackedColorArray, idx: PackedInt32Array, center: Vector3, size: Vector3, color: Color) -> void:
+	var s := size * 0.5
+	var p := [
+		center + Vector3(-s.x, -s.y, -s.z), center + Vector3(s.x, -s.y, -s.z),
+		center + Vector3(s.x, s.y, -s.z), center + Vector3(-s.x, s.y, -s.z),
+		center + Vector3(-s.x, -s.y, s.z), center + Vector3(s.x, -s.y, s.z),
+		center + Vector3(s.x, s.y, s.z), center + Vector3(-s.x, s.y, s.z),
+	]
+	var base := verts.size()
+	verts.append_array(p)
+	for i in range(8):
+		cols.append(color)
+	var f := [
+		[0, 1, 2, 0, 2, 3], [4, 6, 5, 4, 7, 6],
+		[0, 4, 5, 0, 5, 1], [3, 2, 6, 3, 6, 7],
+		[0, 3, 7, 0, 7, 4], [1, 5, 6, 1, 6, 2],
+	]
+	for face in f:
+		for i in face:
+			idx.append(base + i)
+
+
+func _add_cone(verts: PackedVector3Array, cols: PackedColorArray, idx: PackedInt32Array, base_y: float, base_r: float, h: float, color: Color) -> void:
+	var segs := 7
+	var apex := Vector3(0, base_y + h, 0)
+	var base := verts.size()
+	verts.append(apex)
+	cols.append(color)
+	for i in range(segs):
+		var ang := TAU * i / segs
+		verts.append(Vector3(cos(ang) * base_r, base_y, sin(ang) * base_r))
+		cols.append(color)
+	for i in range(segs):
+		var i0 := base + 1 + i
+		var i1 := base + 1 + (i + 1) % segs
+		idx.append_array([base, i0, i1])
+	for i in range(1, segs - 1):
+		idx.append_array([base + 1, base + 1 + i, base + 1 + i + 1])
+
+
+func _make_grass_mesh() -> ArrayMesh:
+	var verts := PackedVector3Array()
+	var cols := PackedColorArray()
+	var idx := PackedInt32Array()
+	var green := Color(0.28, 0.5, 0.2)
+	# тонкая травинка (две пересечённые плоскости)
+	var h := 1.0
+	_add_tri(verts, cols, idx, Vector3(0, 0, 0), Vector3(0, h, 0), Vector3(0.05, 0, 0), green)
+	_add_tri(verts, cols, idx, Vector3(0, 0, 0), Vector3(0, h, 0), Vector3(0, 0, 0.05), green)
+	var am := ArrayMesh.new()
+	var arrays := []
+	arrays.resize(Mesh.ARRAY_MAX)
+	arrays[Mesh.ARRAY_VERTEX] = verts
+	arrays[Mesh.ARRAY_COLOR] = cols
+	arrays[Mesh.ARRAY_INDEX] = idx
+	am.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arrays)
+	return am
+
+
+func _make_rock_mesh() -> ArrayMesh:
+	var verts := PackedVector3Array()
+	var cols := PackedColorArray()
+	var idx := PackedInt32Array()
+	var r := _rng
+	# неровный куб
+	var s := 0.6
+	var p := []
+	for i in range(8):
+		var cx := s if (i & 1) != 0 else -s
+		var cy := s if (i & 2) != 0 else -s
+		var cz := s if (i & 4) != 0 else -s
+		p.append(Vector3(cx + r.randf_range(-0.15, 0.15), cy + r.randf_range(-0.15, 0.15), cz + r.randf_range(-0.15, 0.15)))
+	var gray := Color(0.42, 0.42, 0.45)
+	var base := verts.size()
+	verts.append_array(p)
+	for i in range(8):
+		cols.append(gray)
+	var f := [
+		[0, 1, 2, 0, 2, 3], [4, 6, 5, 4, 7, 6],
+		[0, 4, 5, 0, 5, 1], [3, 2, 6, 3, 6, 7],
+		[0, 3, 7, 0, 7, 4], [1, 5, 6, 1, 6, 2],
+	]
+	for face in f:
+		for i in face:
+			idx.append(base + i)
+	var am := ArrayMesh.new()
+	var arrays := []
+	arrays.resize(Mesh.ARRAY_MAX)
+	arrays[Mesh.ARRAY_VERTEX] = verts
+	arrays[Mesh.ARRAY_COLOR] = cols
+	arrays[Mesh.ARRAY_INDEX] = idx
+	am.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arrays)
+	return am
+
+
+func _vertex_color_material() -> StandardMaterial3D:
+	var m := StandardMaterial3D.new()
+	m.vertex_color_use_as_albedo = true
+	m.albedo_color = Color.WHITE
+	m.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	return m
+
+
+# ---------- окружение ----------
 
 func _build_sky() -> void:
 	var env := Environment.new()
@@ -100,10 +236,7 @@ func _build_sky() -> void:
 	add_child(disc)
 
 
-# ---------- земля: процедурный ландшафт с реальной коллизией ----------
-
 func _build_ground() -> void:
-	# 1. высоты
 	var n := TERRAIN_N + 1
 	_heights.resize(n * n)
 	for z in range(n):
@@ -112,7 +245,6 @@ func _build_ground() -> void:
 			var wz := -HALF + z * TERRAIN_CELL
 			_heights[z * n + x] = _ground_height(wx, wz)
 
-	# 2. визуальный меш (зелёная трава с вершинными цветами)
 	var verts := PackedVector3Array()
 	var cols := PackedColorArray()
 	var idx := PackedInt32Array()
@@ -127,17 +259,15 @@ func _build_ground() -> void:
 			var h := _heights[z * n + x]
 			verts.append(Vector3(wx, h, wz))
 			var c := grass
-			if h > 12.0:
+			if h > 9.0:
 				c = snow
-			elif h > 7.0:
+			elif h > 5.0:
 				c = rock
-			elif h > 3.0:
+			elif h > 2.0:
 				c = grass
 			else:
 				c = dark
-			# лёгкая случайная вариация
-			c = c.lightened(_rng.randf_range(-0.04, 0.04))
-			cols.append(c)
+			cols.append(c.lightened(_rng.randf_range(-0.04, 0.04)))
 	for z in range(TERRAIN_N):
 		for x in range(TERRAIN_N):
 			var i0 := z * n + x
@@ -155,29 +285,10 @@ func _build_ground() -> void:
 	mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arrays)
 	var mi := MeshInstance3D.new()
 	mi.mesh = mesh
-	var mat := StandardMaterial3D.new()
-	mat.vertex_color_use_as_albedo = true
-	mat.albedo_color = Color.WHITE
-	mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
-	mi.material_override = mat
+	mi.material_override = _vertex_color_material()
 	add_child(mi)
 
-	# 3. коллизия (HeightMapShape3D — надёжно для рельефа)
-	var hs := HeightMapShape3D.new()
-	hs.map_width = n
-	hs.map_depth = n
-	hs.map_data = _heights
-	var body := StaticBody3D.new()
-	body.collision_layer = 1
-	body.collision_mask = 0
-	body.scale = Vector3(TERRAIN_CELL, 1.0, TERRAIN_CELL)
-	body.position = Vector3(-HALF, 0, -HALF)
-	add_child(body)
-	var col := CollisionShape3D.new()
-	col.shape = hs
-	body.add_child(col)
-
-	# страховка глубоко внизу
+	# страховочная коллизия внизу
 	var g := StaticBody3D.new()
 	g.collision_layer = 1
 	g.collision_mask = 0
@@ -198,67 +309,71 @@ func _random_spot(min_r: float) -> Vector3:
 	return Vector3(x, _ground_height(x, z), z)
 
 
-# ---------- деревья / камни / руды / трава ----------
+# ---------- деревья / камни / руды / трава (MultiMesh — оптимизация) ----------
 
 func _build_trees() -> void:
-	for i in range(160):
+	var mesh := _make_tree_mesh()
+	var mm := MultiMesh.new()
+	mm.transform_format = MultiMesh.TRANSFORM_3D
+	mm.mesh = mesh
+	mm.instance_count = 150
+	for i in range(150):
 		var pos := _random_spot(12.0)
-		_tree(pos)
-
-
-func _tree(pos: Vector3) -> void:
-	var tree: Node3D = preload("res://models/tree.glb").instantiate()
-	tree.position = pos
-	var s := _rng.randf_range(38.0, 55.0)
-	tree.scale = Vector3.ONE * s
-	add_child(tree)
-	# ставим основание ствола на рельеф
-	_snap_to_ground(tree, pos)
-
-
-func _snap_to_ground(m: Node3D, pos: Vector3) -> void:
-	await get_tree().process_frame
-	await get_tree().process_frame
-	var mn := Vector3(1e9, 1e9, 1e9)
-	var mx := Vector3(-1e9, -1e9, -1e9)
-	for mesh in m.find_children("*", "MeshInstance3D", true, false):
-		var aabb: AABB = mesh.mesh.get_aabb()
-		var t: Transform3D = mesh.global_transform
-		for i in range(8):
-			var p: Vector3 = aabb.position + Vector3(
-				aabb.size.x if (i & 1) != 0 else 0.0,
-				aabb.size.y if (i & 2) != 0 else 0.0,
-				aabb.size.z if (i & 4) != 0 else 0.0)
-			p = t * p
-			mn = mn.min(p)
-			mx = mx.max(p)
-	m.position.y += (pos.y - mn.y)
+		var s := _rng.randf_range(0.7, 1.6)
+		var t := Transform3D(Basis(Vector3.UP, _rng.randf() * TAU), pos + Vector3(0, -0.1, 0))
+		t = t.scaled(Vector3(s, s, s))
+		mm.set_instance_transform(i, t)
+	var inst := MultiMeshInstance3D.new()
+	inst.multimesh = mm
+	inst.material_override = _vertex_color_material()
+	add_child(inst)
 
 
 func _build_rocks() -> void:
-	for i in range(60):
+	var mm := MultiMesh.new()
+	mm.transform_format = MultiMesh.TRANSFORM_3D
+	mm.mesh = _make_rock_mesh()
+	mm.instance_count = 80
+	for i in range(80):
 		var pos := _random_spot(8.0)
-		var r := _rng.randf_range(0.4, 1.5)
-		var rock := MeshInstance3D.new()
-		var sm := SphereMesh.new()
-		sm.radius = r
-		sm.height = r * 1.6
-		rock.mesh = sm
-		rock.material_override = _mat(Color(0.42, 0.42, 0.45))
-		rock.position = Vector3(pos.x, pos.y + r * 0.4, pos.z)
-		rock.scale = Vector3(1, _rng.randf_range(0.5, 0.9), 1)
-		add_child(rock)
+		var s := _rng.randf_range(0.6, 2.2)
+		var t := Transform3D(Basis(Vector3.UP, _rng.randf() * TAU), pos + Vector3(0, 0.15 * s, 0))
+		t = t.scaled(Vector3(s, s * _rng.randf_range(0.6, 1.0), s))
+		mm.set_instance_transform(i, t)
+	var inst := MultiMeshInstance3D.new()
+	inst.multimesh = mm
+	inst.material_override = _vertex_color_material()
+	add_child(inst)
+
+
+func _build_grass() -> void:
+	var mesh := _make_grass_mesh()
+	var mm := MultiMesh.new()
+	mm.transform_format = MultiMesh.TRANSFORM_3D
+	mm.mesh = mesh
+	mm.instance_count = 500
+	for i in range(500):
+		var pos := _random_spot(8.0)
+		var s := _rng.randf_range(0.5, 1.4)
+		var t := Transform3D(Basis(Vector3.UP, _rng.randf() * TAU), pos)
+		t = t.scaled(Vector3(s, s, s))
+		mm.set_instance_transform(i, t)
+	var inst := MultiMeshInstance3D.new()
+	inst.multimesh = mm
+	inst.material_override = _vertex_color_material()
+	add_child(inst)
 
 
 func _build_ores() -> void:
-	for i in range(40):
+	# руды — отдельные объекты (их мало)
+	for i in range(20):
 		var pos := _random_spot(10.0)
 		var kind := _rng.randi_range(0, 2)
 		match kind:
 			0:
 				_ore_crystal(pos, Color(1.0, 0.85, 0.2), Color(1.0, 0.8, 0.15))
 			1:
-				var r := _rng.randf_range(0.4, 0.9)
+				var r := _rng.randf_range(0.5, 1.0)
 				var ore := MeshInstance3D.new()
 				var sm := SphereMesh.new()
 				sm.radius = r
@@ -277,7 +392,7 @@ func _build_ores() -> void:
 				vein.position = Vector3(pos.x + r * 0.3, pos.y + r * 0.6, pos.z)
 				add_child(vein)
 			2:
-				var r2 := _rng.randf_range(0.5, 1.1)
+				var r2 := _rng.randf_range(0.6, 1.2)
 				var stone := MeshInstance3D.new()
 				var sm3 := SphereMesh.new()
 				sm3.radius = r2
@@ -301,20 +416,6 @@ func _ore_crystal(pos: Vector3, color: Color, emissive: Color) -> void:
 		c.position = Vector3(pos.x + _rng.randf_range(-0.25, 0.25), pos.y + cm.height * 0.4, pos.z + _rng.randf_range(-0.25, 0.25))
 		c.rotation_degrees = Vector3(_rng.randf_range(-20, 20), 0, _rng.randf_range(-20, 20))
 		add_child(c)
-
-
-func _build_grass() -> void:
-	for i in range(400):
-		var pos := _random_spot(8.0)
-		var blade := MeshInstance3D.new()
-		var cm := CylinderMesh.new()
-		cm.top_radius = 0.02
-		cm.bottom_radius = 0.05
-		cm.height = _rng.randf_range(0.4, 1.1)
-		blade.mesh = cm
-		blade.material_override = _mat(Color(0.3, 0.5, 0.2))
-		blade.position = Vector3(pos.x, pos.y + cm.height * 0.5, pos.z)
-		add_child(blade)
 
 
 # ---------- игрок / животные / HUD ----------
