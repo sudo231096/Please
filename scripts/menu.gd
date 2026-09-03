@@ -119,45 +119,35 @@ func _build_world() -> void:
 
 
 func _build_player_model() -> void:
-	# качественная процедурная модель выжившего (скачанная была багнутой — 5 весов на вершину)
-	var b := Node3D.new()
-	b.position = Vector3(0, 0, -3)
-	add_child(b)
-	var skin := Color(0.86, 0.7, 0.55)
-	var jacket := Color(0.3, 0.32, 0.25)
-	var pants := Color(0.24, 0.26, 0.32)
-	var boots := Color(0.15, 0.12, 0.1)
-	var hair := Color(0.25, 0.16, 0.1)
-	# ноги
-	_box(Vector3(0.22, 0.85, 0.22), Vector3(-0.16, 0.42, 0), pants, b)
-	_box(Vector3(0.22, 0.85, 0.22), Vector3(0.16, 0.42, 0), pants, b)
-	# ботинки
-	_box(Vector3(0.24, 0.15, 0.34), Vector3(-0.16, 0.08, 0.03), boots, b)
-	_box(Vector3(0.24, 0.15, 0.34), Vector3(0.16, 0.08, 0.03), boots, b)
-	# торс (куртка)
-	_box(Vector3(0.58, 0.7, 0.32), Vector3(0, 1.15, 0), jacket, b)
-	# ремень
-	_box(Vector3(0.6, 0.06, 0.34), Vector3(0, 0.9, 0), Color(0.2, 0.14, 0.08), b)
-	# руки
-	_box(Vector3(0.18, 0.6, 0.18), Vector3(-0.42, 1.12, 0), jacket, b)
-	_box(Vector3(0.18, 0.6, 0.18), Vector3(0.42, 1.12, 0), jacket, b)
-	# кисти рук
-	_sphere(0.09, Vector3(-0.42, 0.78, 0), skin, b)
-	_sphere(0.09, Vector3(0.42, 0.78, 0), skin, b)
-	# голова
-	_sphere(0.24, Vector3(0, 1.72, 0), skin, b)
-	# волосы
-	_sphere(0.25, Vector3(0, 1.82, 0.02), hair, b)
-	# борода
-	_box(Vector3(0.2, 0.14, 0.18), Vector3(0, 1.62, 0.1), hair, b)
-	# глаза
-	_sphere(0.03, Vector3(-0.08, 1.74, 0.22), Color(0.1, 0.1, 0.1), b)
-	_sphere(0.03, Vector3(0.08, 1.74, 0.22), Color(0.1, 0.1, 0.1), b)
-	# топор в правой руке
-	_box(Vector3(0.05, 0.65, 0.05), Vector3(0.5, 1.35, 0.1), Color(0.4, 0.28, 0.16), b)
-	_box(Vector3(0.24, 0.07, 0.05), Vector3(0.5, 1.68, 0.1), Color(0.55, 0.55, 0.6), b)
-	# рюкзак
-	_box(Vector3(0.4, 0.5, 0.18), Vector3(0, 1.2, -0.28), Color(0.32, 0.26, 0.18), b)
+	# скачанная модель игрока (мускулистый варвар в духе Rust)
+	var model: Node3D = preload("res://models/player.glb").instantiate()
+	add_child(model)
+	# модель ~25.6 юнитов ростом -> подгоняем под 1.8 м
+	model.scale = Vector3.ONE * (1.8 / 25.6)
+	model.rotation_degrees = Vector3(0, 180, 0)  # лицом к камере
+	# скрыть оружие (копьё, булаву, кинжал) — в Rust игрок без оружия в меню
+	for m in model.find_children("*", "MeshInstance3D", true, false):
+		var nm := String(m.name)
+		if nm.contains("weapon") or nm.contains("spear") or nm.contains("mace") or nm.contains("dagger"):
+			m.visible = false
+	# поставить на землю по габаритам
+	await get_tree().process_frame
+	await get_tree().process_frame
+	var mn := Vector3(1e9, 1e9, 1e9)
+	for m in model.find_children("*", "MeshInstance3D", true, false):
+		if not m.visible:
+			continue
+		var aabb: AABB = m.mesh.get_aabb()
+		var t: Transform3D = m.global_transform
+		for i in range(8):
+			var p: Vector3 = aabb.position + Vector3(
+				aabb.size.x if (i & 1) != 0 else 0.0,
+				aabb.size.y if (i & 2) != 0 else 0.0,
+				aabb.size.z if (i & 4) != 0 else 0.0)
+			p = t * p
+			mn = mn.min(p)
+	model.position += Vector3(0, -mn.y, 0)
+	model.position.z = -3.0
 
 
 func _build_ui() -> void:

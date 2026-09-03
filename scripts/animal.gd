@@ -108,14 +108,14 @@ func _build() -> void:
 	add_child(col)
 
 	match kind:
-		0:
+		0:  # курица — ~0.7 м
 			_model = preload("res://models/chicken.glb").instantiate()
-			_model.scale = Vector3.ONE * 1.6
-			_model.position = Vector3(0, 0.1, 0)
+			_model.scale = Vector3.ONE * 2.3
+			_model.position = Vector3(0, 0.05, 0)
 			add_child(_model)
-		1:
+		1:  # олень — ~1.6 м
 			_model = preload("res://models/deer.glb").instantiate()
-			_model.scale = Vector3.ONE * 0.55
+			_model.scale = Vector3.ONE * 0.95
 			_model.position = Vector3(0, -0.1, 0)
 			add_child(_model)
 		2:
@@ -128,7 +128,7 @@ func _build_bear() -> void:
 	# скачанная модель медведя (с автоподгонкой по габаритам)
 	_model = preload("res://models/bear.glb").instantiate()
 	add_child(_model)
-	_fit_model(_model, 1.6)
+	_fit_model(_model, 2.0)
 
 
 func _fit_model(m: Node3D, target_height: float) -> void:
@@ -160,18 +160,19 @@ func _fit_model(m: Node3D, target_height: float) -> void:
 
 
 func _build_boar() -> void:
+	# кабан покрупнее (~1 м в холке)
 	var body := Color(0.35, 0.22, 0.16)
 	var dark := Color(0.2, 0.12, 0.1)
-	_box(Vector3(0.9, 0.7, 1.4), Vector3(0, 0.6, 0), body)
-	_sphere(0.4, Vector3(0, 1.05, -0.7), body)
-	_sphere(0.15, Vector3(0, 0.95, -1.1), dark)  # пятачок
+	_box(Vector3(1.15, 0.9, 1.8), Vector3(0, 0.75, 0), body)
+	_sphere(0.5, Vector3(0, 1.35, -0.9), body)
+	_sphere(0.2, Vector3(0, 1.2, -1.4), dark)  # пятачок
 	# бивни
-	_box(Vector3(0.08, 0.08, 0.3), Vector3(-0.15, 0.85, -1.15), Color(0.9, 0.9, 0.8))
-	_box(Vector3(0.08, 0.08, 0.3), Vector3(0.15, 0.85, -1.15), Color(0.9, 0.9, 0.8))
-	_box(Vector3(0.25, 0.45, 0.25), Vector3(-0.4, 0.22, 0.5), dark)
-	_box(Vector3(0.25, 0.45, 0.25), Vector3(0.4, 0.22, 0.5), dark)
-	_box(Vector3(0.25, 0.45, 0.25), Vector3(-0.4, 0.22, -0.5), dark)
-	_box(Vector3(0.25, 0.45, 0.25), Vector3(0.4, 0.22, -0.5), dark)
+	_box(Vector3(0.1, 0.1, 0.38), Vector3(-0.2, 1.1, -1.5), Color(0.9, 0.9, 0.8))
+	_box(Vector3(0.1, 0.1, 0.38), Vector3(0.2, 1.1, -1.5), Color(0.9, 0.9, 0.8))
+	_box(Vector3(0.32, 0.6, 0.32), Vector3(-0.5, 0.28, 0.65), dark)
+	_box(Vector3(0.32, 0.6, 0.32), Vector3(0.5, 0.28, 0.65), dark)
+	_box(Vector3(0.32, 0.6, 0.32), Vector3(-0.5, 0.28, -0.65), dark)
+	_box(Vector3(0.32, 0.6, 0.32), Vector3(0.5, 0.28, -0.65), dark)
 
 
 func _physics_process(delta: float) -> void:

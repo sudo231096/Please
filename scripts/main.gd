@@ -76,10 +76,11 @@ func _build_sky() -> void:
 func _build_ground() -> void:
 	# скачанная карта-террейн (Badlands) как земля.
 	# Модель уже повёрнута внутри (ось Z вверх) — НЕ крутим её снова.
-	# Масштабируем XZ сильно (большая карта), а высоту Y — слабо (мягкий рельеф ~7м).
+	# XZ — большая карта (1000 м), высота — мягкий рельеф (~2.4 м).
+	# Нижняя точка террейна на высоте 0.045 (в локальных ед.) — опускаем, чтобы земля была на уровне игрока.
 	var terrain: Node3D = preload("res://models/terrain.glb").instantiate()
-	terrain.scale = Vector3(500, 30, 500)  # 1000x1000 м, рельеф ~7 м
-	terrain.position = Vector3(0, 0, 0)
+	terrain.scale = Vector3(500, 10, 500)
+	terrain.position = Vector3(0, -0.045 * 10.0, 0)
 	add_child(terrain)
 
 	# коллизия пола (плоская, по габаритам)
@@ -102,10 +103,10 @@ func _build_trees() -> void:
 
 
 func _tree(pos: Vector3) -> void:
-	# скачанная low-poly модель ёлки
+	# скачанная low-poly модель ёлки (по умолчанию крошечная ~0.11м -> масштабируем до 4-6м)
 	var tree: Node3D = preload("res://models/tree.glb").instantiate()
 	tree.position = pos
-	var s := _rng.randf_range(1.5, 3.0)
+	var s := _rng.randf_range(38.0, 55.0)
 	tree.scale = Vector3.ONE * s
 	add_child(tree)
 	_fit_flat(tree)
