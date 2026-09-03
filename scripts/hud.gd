@@ -48,31 +48,37 @@ func _build() -> void:
 	cross.modulate = Color(1, 1, 1, 0.85)
 	add_child(cross)
 
-	# --- hotbar инвентаря: нижняя середина ---
+	# --- hotbar инвентаря: нижняя середина (6 слотов, как в Rust) ---
 	var bar := HBoxContainer.new()
 	bar.anchor_left = 0.5
 	bar.anchor_right = 0.5
 	bar.anchor_top = 1.0
 	bar.anchor_bottom = 1.0
-	bar.offset_left = -210
-	bar.offset_right = 210
+	bar.offset_left = -330
+	bar.offset_right = 330
 	bar.offset_top = -70
 	bar.offset_bottom = -10
 	bar.add_theme_constant_override("separation", 6)
 	add_child(bar)
 
-	# 4 ячейки инвентаря
-	for i in range(4):
-		var slot := PanelContainer.new()
-		slot.custom_minimum_size = Vector2(96, 60)
-		var lbl := Label.new()
-		lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-		lbl.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
-		lbl.add_theme_font_size_override("font_size", 16)
-		lbl.text = "—"
-		slot.add_child(lbl)
+	# 6 ячеек инвентаря (кнопки: тап выбирает слот, повторный тап — использует)
+	_slots.clear()
+	for i in range(6):
+		var slot := Button.new()
+		slot.focus_mode = Control.FOCUS_NONE
+		slot.custom_minimum_size = Vector2(100, 60)
+		slot.add_theme_font_size_override("font_size", 13)
+		var slot_i := i
+		slot.pressed.connect(func() -> void:
+			if GameState.selected_slot == slot_i:
+				# повторный тап по активному — использовать (съесть/выпить)
+				GameState.use_slot(slot_i)
+			else:
+				GameState.selected_slot = slot_i
+			refresh()
+		)
 		bar.add_child(slot)
-		_slots.append(lbl)
+		_slots.append(slot)
 
 	# --- HP / голод / жажда: чуть выше hotbar ---
 	_hp_fill = _bar(Color(0.3, 0.9, 0.4), -110, 30, 180)
@@ -169,36 +175,25 @@ func _build() -> void:
 	atk.button_down.connect(func() -> void: _player.set_meta("mob_attack", true))
 	add_child(atk)
 
-	# есть / пить
-	var eat := Button.new()
-	eat.text = "ЕСТЬ"
-	eat.focus_mode = Control.FOCUS_NONE
-	eat.anchor_left = side_anchor
-	eat.anchor_right = side_anchor
-	eat.anchor_top = 1.0
-	eat.anchor_bottom = 1.0
-	eat.offset_left = -330 if on_right else 180
-	eat.offset_right = -180 if on_right else 330
-	eat.offset_top = -300
-	eat.offset_bottom = -200
-	eat.add_theme_font_size_override("font_size", 20)
-	eat.pressed.connect(func() -> void: GameState.eat(); refresh())
-	add_child(eat)
-
-	var drink := Button.new()
-	drink.text = "ПИТЬ"
-	drink.focus_mode = Control.FOCUS_NONE
-	drink.anchor_left = side_anchor
-	drink.anchor_right = side_anchor
-	drink.anchor_top = 1.0
-	drink.anchor_bottom = 1.0
-	drink.offset_left = -170 if on_right else 20
-	drink.offset_right = -20 if on_right else 170
-	drink.offset_top = -300
-	drink.offset_bottom = -200
-	drink.add_theme_font_size_override("font_size", 20)
-	drink.pressed.connect(func() -> void: GameState.drink(); refresh())
-	add_child(drink)
+	# кнопка «использовать» (съесть/выпить активный предмет)
+	var use_btn := Button.new()
+	use_btn.text = "ЕСТЬ/ПИТЬ"
+	use_btn.focus_mode = Control.FOCUS_NONE
+	use_btn.anchor_left = side_anchor
+	use_btn.anchor_right = side_anchor
+	use_btn.anchor_top = 1.0
+	use_btn.anchor_bottom = 1.0
+	use_btn.offset_left = -330 if on_right else 180
+	use_btn.offset_right = -180 if on_right else 330
+	use_btn.offset_top = -300
+	use_btn.offset_bottom = -200
+	use_btn.add_theme_font_size_override("font_size", 18)
+	use_btn.modulate = Color(0.7, 0.9, 0.7)
+	use_btn.pressed.connect(func() -> void:
+		GameState.use_slot(GameState.selected_slot)
+		refresh()
+	)
+	add_child(use_btn)
 
 	# кнопка приседа
 	var crouch := Button.new()
@@ -317,15 +312,20 @@ func _update_bars() -> void:
 
 
 func refresh() -> void:
-	# слоты hotbar: дерево, камень, мясо, вода
-	var items := [["Дерево", GameState.wood], ["Камень", GameState.stone], ["Мясо", GameState.meat], ["Сера", GameState.sulfur]]
-	for i in range(4):
-		var name: String = items[i][0]
-		var count: int = items[i][1]
+	# слоты hotbar (6): название + количество, подсветка активного
+	for i in range(6):
+		var slot: Button = _slots[i]
+		var name: String = GameState.HOTBAR[i][1]
+		var count: int = GameState.hotbar_count(i)
 		if count > 0:
-			_slots[i].text = "%s\nx%d" % [name, count]
+			slot.text = "%s\nx%d" % [name, count]
 		else:
-			_slots[i].text = "—"
+			slot.text = name
+		# подсветка активного слота
+		if i == GameState.selected_slot:
+			slot.modulate = Color(1.0, 1.0, 0.55)
+		else:
+			slot.modulate = Color(1, 1, 1)
 
 
 func _build_craft_menu() -> void:
@@ -403,15 +403,10 @@ func _refresh_craft() -> void:
 		var rid: String = id
 		btn.pressed.connect(func() -> void:
 			if GameState.craft(rid):
-				# если это постройка — ставим её в мире перед игроком
+				# постройка — входим в режим строительства (призрак)
 				if rec["type"] == "build":
-					var terrain := get_tree().get_first_node_in_group("terrain")
-					if terrain and terrain.has_method("_place_building") and _player:
-						var fwd := -(_player as Node3D).global_transform.basis.z
-						fwd.y = 0.0
-						fwd = fwd.normalized()
-						terrain._place_building(rid, _player.global_position, fwd)
-						_craft.visible = false
+					GameState.begin_build(rid)
+					_craft.visible = false
 				_refresh_craft()
 				refresh()
 		)

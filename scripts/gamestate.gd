@@ -29,6 +29,24 @@ var has_spear := false     # копьё: +урон
 var mouse_sens := 0.0025
 var buttons_left := true
 
+# инвентарь / hotbar
+var selected_slot := 0       # активный слот hotbar (0..5)
+# режим строительства
+var build_mode := false      # строим «призраком»
+var build_kind := ""         # что строим
+var build_rot := 0.0         # поворот постройки (рад)
+
+
+# предметы hotbar: [ключ ресурса, название, можно использовать?]
+const HOTBAR := [
+	["wood", "Дерево", false],
+	["stone", "Камень", false],
+	["sulfur", "Сера", false],
+	["iron", "Железо", false],
+	["meat", "Мясо", true],   # съесть
+	["water", "Вода", true],  # выпить
+]
+
 
 # рецепты: имя -> {затраты, даёт}
 const RECIPES := {
@@ -111,6 +129,46 @@ func drink() -> void:
 		thirst = minf(100.0, thirst + 40.0)
 
 
+# ресурс активного слота hotbar
+func hotbar_res(slot: int) -> String:
+	return HOTBAR[slot][0]
+
+
+func hotbar_count(slot: int) -> int:
+	var key: String = HOTBAR[slot][0]
+	match key:
+		"wood": return wood
+		"stone": return stone
+		"sulfur": return sulfur
+		"iron": return iron
+		"meat": return meat
+		"water": return water
+	return 0
+
+
+# использовать предмет в слоте (съесть мясо / выпить воду) -> сообщение
+func use_slot(slot: int) -> String:
+	var key: String = HOTBAR[slot][0]
+	if key == "meat":
+		if meat > 0:
+			eat()
+			return "Съел мясо"
+		return "Нет мяса"
+	elif key == "water":
+		if water > 0:
+			drink()
+			return "Выпил воду"
+		return "Нет воды"
+	return ""
+
+
+# начать строительство
+func begin_build(kind: String) -> void:
+	build_mode = true
+	build_kind = kind
+	build_rot = 0.0
+
+
 func add_meat(n: int) -> void:
 	meat += n
 
@@ -124,6 +182,7 @@ func add_resource(name: String, n: int) -> void:
 		"cloth": cloth += n
 		"metal": metal += n
 		"water": water += n
+		"meat": meat += n
 
 
 # множитель добычи дерева/камня с учётом инструментов

@@ -22,6 +22,7 @@ var _swing_t := 0.0
 var _base_cam := Vector3(0, EYE_HEIGHT, 0)
 var _crouching := false
 var _target_eye := EYE_HEIGHT
+var _hud_ref: CanvasLayer = null
 
 signal died
 
@@ -39,6 +40,9 @@ func _ready() -> void:
 
 func _input(event: InputEvent) -> void:
 	if event is InputEventMouseMotion and Input.get_mouse_mode() == Input.MOUSE_MODE_CAPTURED:
+		# в режиме строительства колесо поворачивает постройку
+		if GameState.build_mode and Input.is_mouse_button_pressed(MOUSE_BUTTON_RIGHT):
+			pass
 		rotate_y(-event.relative.x * GameState.mouse_sens)
 		_cam.rotate_x(-event.relative.y * GameState.mouse_sens)
 		_cam.rotation.x = clampf(_cam.rotation.x, -1.45, 1.45)
@@ -48,6 +52,21 @@ func _input(event: InputEvent) -> void:
 			rotate_y(-event.relative.x * GameState.mouse_sens * 2.2)
 			_cam.rotate_x(-event.relative.y * GameState.mouse_sens * 2.2)
 			_cam.rotation.x = clampf(_cam.rotation.x, -1.45, 1.45)
+	# выбор слота hotbar: цифры 1-6 и колесо мыши
+	if event is InputEventKey and event.pressed and not event.echo:
+		if event.keycode >= KEY_1 and event.keycode <= KEY_6:
+			GameState.selected_slot = event.keycode - KEY_1
+		elif event.keycode == KEY_R and GameState.build_mode:
+			GameState.build_rot += PI / 2.0  # поворот постройки на 90°
+		elif event.keycode == KEY_ESCAPE and GameState.build_mode:
+			GameState.build_mode = false
+	elif event is InputEventMouseButton and event.pressed:
+		if event.button_index == MOUSE_BUTTON_WHEEL_UP:
+			GameState.selected_slot = (GameState.selected_slot - 1 + 6) % 6
+		elif event.button_index == MOUSE_BUTTON_WHEEL_DOWN:
+			GameState.selected_slot = (GameState.selected_slot + 1) % 6
+		elif event.button_index == MOUSE_BUTTON_RIGHT and GameState.build_mode:
+			GameState.build_mode = false  # отмена строительства
 
 
 func _ground_height() -> float:
@@ -126,15 +145,34 @@ func _physics_process(delta: float) -> void:
 		_vy = 0.0
 		_grounded = true
 
-	# удар: на десктопе — ЛКМ или J; на телефоне — только кнопка «УДАР» (тап по экрану НЕ атакует)
-	var attack := false
-	if not DisplayServer.is_touchscreen_available():
-		attack = Input.is_mouse_button_pressed(MOUSE_BUTTON_LEFT) or Input.is_physical_key_pressed(KEY_J)
-	if has_meta("mob_attack") and bool(get_meta("mob_attack")):
-		attack = true
-		set_meta("mob_attack", false)
-	if attack and _attack_cd <= 0.0:
-		_attack()
+	# режим строительства: ЛКМ ставит постройку
+	if GameState.build_mode:
+		var terrain := get_tree().get_first_node_in_group("terrain")
+		var place := false
+		if not DisplayServer.is_touchscreen_available():
+			place = Input.is_mouse_button_pressed(MOUSE_BUTTON_LEFT)
+		if has_meta("mob_attack") and bool(get_meta("mob_attack")):
+			place = true
+			set_meta("mob_attack", false)
+		if place and terrain and terrain.has_method("_place_building"):
+			var fwd := -_cam.global_transform.basis.z
+			fwd.y = 0.0
+			fwd = fwd.normalized()
+			terrain._place_building(GameState.build_kind, global_position, fwd, GameState.build_rot)
+			GameState.build_mode = false
+			if _hud_ref:
+				_hud_ref.refresh()
+		# призрак обновляется в main
+	else:
+		# удар: на десктопе — ЛКМ или J; на телефоне — только кнопка «УДАР» (тап по экрану НЕ атакует)
+		var attack := false
+		if not DisplayServer.is_touchscreen_available():
+			attack = Input.is_mouse_button_pressed(MOUSE_BUTTON_LEFT) or Input.is_physical_key_pressed(KEY_J)
+		if has_meta("mob_attack") and bool(get_meta("mob_attack")):
+			attack = true
+			set_meta("mob_attack", false)
+		if attack and _attack_cd <= 0.0:
+			_attack()
 
 	if Input.is_physical_key_pressed(KEY_E):
 		GameState.eat()

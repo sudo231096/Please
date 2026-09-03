@@ -62,6 +62,8 @@ func _mat(color: Color, emissive := Color(0, 0, 0, 0)) -> StandardMaterial3D:
 	var m := StandardMaterial3D.new()
 	m.albedo_color = color
 	m.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	if color.a < 1.0:
+		m.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
 	if emissive.a > 0.0:
 		m.emission_enabled = true
 		m.emission = emissive
@@ -450,6 +452,7 @@ func _build_hud() -> void:
 	_hud.set_script(HudScr)
 	add_child(_hud)
 	_hud.bind(_player)
+	_player._hud_ref = _hud
 
 
 func _spawn_animals() -> void:
@@ -565,55 +568,93 @@ func _hide_mm(mm: MultiMesh, index: int) -> void:
 
 # ---------- строительство ----------
 
-func _place_building(kind: String, origin: Vector3, look_dir: Vector3) -> void:
-	# точка постройки: в 2 метрах перед игроком, на рельефе
-	var px := origin.x + look_dir.x * 2.0
-	var pz := origin.z + look_dir.z * 2.0
-	var py := _ground_height(px, pz)
-	var pos := Vector3(px, py, pz)
-
-	match kind:
-		"campfire":
-			# костёр: камни по кругу + пламя
-			for i in range(6):
-				var a := TAU * i / 6.0
-				var rock := MeshInstance3D.new()
-				var sm := SphereMesh.new()
-				sm.radius = 0.15
-				sm.height = 0.3
-				rock.mesh = sm
-				rock.material_override = _mat(Color(0.4, 0.4, 0.42))
-				rock.position = pos + Vector3(cos(a) * 0.5, 0.1, sin(a) * 0.5)
-				add_child(rock)
-			var fire := MeshInstance3D.new()
-			var fsm := SphereMesh.new()
-			fsm.radius = 0.25
-			fsm.height = 0.7
-			fire.mesh = fsm
-			fire.material_override = _mat(Color(1.0, 0.5, 0.1), Color(1.0, 0.4, 0.05))
-			fire.position = pos + Vector3(0, 0.4, 0)
-			add_child(fire)
-		"furnace":
-			_box_at(pos, Vector3(1.0, 1.2, 1.0), Color(0.3, 0.3, 0.32))
-			_box_at(pos + Vector3(0, 1.4, 0), Vector3(0.3, 0.5, 0.3), Color(0.25, 0.25, 0.28))
-		"wall":
-			_box_at(pos, Vector3(2.5, 2.5, 0.2), Color(0.42, 0.3, 0.16))
-		"floor":
-			_box_at(pos + Vector3(0, -0.05, 0), Vector3(2.5, 0.1, 2.5), Color(0.45, 0.33, 0.18))
-		"door":
-			_box_at(pos, Vector3(1.2, 2.2, 0.15), Color(0.42, 0.3, 0.16))
-			_box_at(pos + Vector3(0, 1.1, 0), Vector3(0.1, 2.2, 0.25), Color(0.35, 0.25, 0.14))
-		"bag":
-			# спальник
-			_box_at(pos, Vector3(0.9, 0.2, 2.0), Color(0.2, 0.35, 0.25))
-			_box_at(pos + Vector3(0, 0.25, -0.9), Vector3(0.9, 0.25, 0.4), Color(0.15, 0.28, 0.2))
-
-
-func _box_at(pos: Vector3, size: Vector3, color: Color) -> void:
+func _box_at(pos: Vector3, size: Vector3, color: Color, parent: Node3D = null) -> MeshInstance3D:
 	var m := MeshInstance3D.new()
 	var bm := BoxMesh.new()
 	bm.size = size
 	m.mesh = bm
 	m.material_override = _mat(color)
 	m.position = pos + Vector3(0, size.y * 0.5, 0)
-	add_child(m)
+	(parent if parent else self).add_child(m)
+	return m
+
+
+func _sphere_at(pos: Vector3, r: float, h: float, color: Color, parent: Node3D = null, emissive := Color(0, 0, 0, 0)) -> MeshInstance3D:
+	var m := MeshInstance3D.new()
+	var sm := SphereMesh.new()
+	sm.radius = r
+	sm.height = h
+	m.mesh = sm
+	m.material_override = _mat(color, emissive)
+	m.position = pos
+	(parent if parent else self).add_child(m)
+	return m
+
+
+# строит меши постройки в контейнер parent (локальные координаты от точки pos)
+func _make_building(kind: String, parent: Node3D, ghost: bool) -> void:
+	var mat_col := Color(0.42, 0.3, 0.16)
+	if ghost:
+		mat_col = Color(0.4, 1.0, 0.4, 0.45)
+	match kind:
+		"campfire":
+			for i in range(6):
+				var a := TAU * i / 6.0
+				_sphere_at(Vector3(cos(a) * 0.5, 0.1, sin(a) * 0.5), 0.15, 0.3, Color(0.4, 0.4, 0.42), parent)
+			_sphere_at(Vector3(0, 0.4, 0), 0.25, 0.7, Color(1.0, 0.5, 0.1), parent, Color(1.0, 0.4, 0.05))
+		"furnace":
+			_box_at(Vector3.ZERO, Vector3(1.0, 1.2, 1.0), Color(0.3, 0.3, 0.32), parent)
+			_box_at(Vector3(0, 1.4, 0), Vector3(0.3, 0.5, 0.3), Color(0.25, 0.25, 0.28), parent)
+		"wall":
+			_box_at(Vector3.ZERO, Vector3(2.5, 2.5, 0.2), mat_col, parent)
+		"floor":
+			_box_at(Vector3(0, -0.05, 0), Vector3(2.5, 0.1, 2.5), Color(0.45, 0.33, 0.18) if not ghost else mat_col, parent)
+		"door":
+			_box_at(Vector3.ZERO, Vector3(1.2, 2.2, 0.15), mat_col, parent)
+			_box_at(Vector3(0, 1.1, 0), Vector3(0.1, 2.2, 0.25), Color(0.35, 0.25, 0.14) if not ghost else mat_col, parent)
+		"bag":
+			_box_at(Vector3.ZERO, Vector3(0.9, 0.2, 2.0), Color(0.2, 0.35, 0.25) if not ghost else mat_col, parent)
+			_box_at(Vector3(0, 0.25, -0.9), Vector3(0.9, 0.25, 0.4), Color(0.15, 0.28, 0.2) if not ghost else mat_col, parent)
+
+
+func _place_building(kind: String, origin: Vector3, look_dir: Vector3, rot: float = 0.0) -> void:
+	var px := origin.x + look_dir.x * 2.0
+	var pz := origin.z + look_dir.z * 2.0
+	var py := _ground_height(px, pz)
+	var node := Node3D.new()
+	node.position = Vector3(px, py, pz)
+	node.rotation.y = rot
+	add_child(node)
+	_make_building(kind, node, false)
+
+
+# строительный призрак
+var _ghost: Node3D = null
+
+func _process(delta: float) -> void:
+	if not GameState.build_mode:
+		if _ghost:
+			_ghost.queue_free()
+			_ghost = null
+		return
+	# создать/обновить призрак
+	if _ghost == null or _ghost.get_child_count() == 0:
+		if _ghost:
+			_ghost.queue_free()
+		_ghost = Node3D.new()
+		add_child(_ghost)
+		_make_building(GameState.build_kind, _ghost, true)
+	if _player:
+		var cam: Camera3D = _player.get_node_or_null("Camera3D")
+		var fwd := -(_player as Node3D).global_transform.basis.z
+		if cam:
+			fwd = -cam.global_transform.basis.z
+		fwd.y = 0.0
+		fwd = fwd.normalized()
+		var px: float = _player.global_position.x + fwd.x * 2.0
+		var pz: float = _player.global_position.z + fwd.z * 2.0
+		# привязка к сетке 1 м
+		px = roundf(px)
+		pz = roundf(pz)
+		_ghost.position = Vector3(px, _ground_height(px, pz), pz)
+		_ghost.rotation.y = GameState.build_rot
