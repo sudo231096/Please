@@ -145,11 +145,24 @@ func _build() -> void:
 	map_btn.add_theme_font_size_override("font_size", 20)
 	map_btn.modulate = Color(0.5, 0.75, 0.9)
 	map_btn.pressed.connect(func() -> void:
-		if _player:
-			GameState.last_pos = _player.global_position
-		get_tree().change_scene_to_file("res://scenes/Map.tscn")
+		_save_pos_and_go("res://scenes/Map.tscn")
 	)
 	add_child(map_btn)
+
+	# кнопка «Инвентарь»
+	var inv_btn := Button.new()
+	inv_btn.text = "ИНВЕНТАРЬ"
+	inv_btn.focus_mode = Control.FOCUS_NONE
+	inv_btn.offset_left = 20
+	inv_btn.offset_top = 76
+	inv_btn.offset_right = 200
+	inv_btn.offset_bottom = 122
+	inv_btn.add_theme_font_size_override("font_size", 18)
+	inv_btn.modulate = Color(0.7, 0.7, 0.5)
+	inv_btn.pressed.connect(func() -> void:
+		_save_pos_and_go("res://scenes/Inventory.tscn")
+	)
+	add_child(inv_btn)
 
 	# джойстик (слева или справа — из настроек)
 	var joy := Control.new()
@@ -314,6 +327,13 @@ func _bar(color: Color, top: float, left: float, width: float) -> ColorRect:
 func _on_joy(dir: Vector2) -> void:
 	if _player:
 		_player.set_meta("mob_dir", dir)
+
+
+func _save_pos_and_go(scene: String) -> void:
+	if _player:
+		GameState.last_pos = _player.global_position
+		GameState.return_to_pos = true
+	get_tree().change_scene_to_file(scene)
 
 
 func _process(delta: float) -> void:

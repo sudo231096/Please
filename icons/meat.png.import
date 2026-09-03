@@ -2,19 +2,16 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://dewbrh7j5fps6"
-path="res://.godot/imported/player_1.png-c72efc4b74c0fe80bd2e6e18f69d9913.ctex"
+uid="uid://c11613eqvo41n"
+path="res://.godot/imported/meat.png-074bdcdc96ab6152cb575c3956972551.ctex"
 metadata={
 "vram_texture": false
-}
-generator_parameters={
-"md5": "af5407d0010b099b8e33da038034a3b3"
 }
 
 [deps]
 
-source_file="res://models/player_1.png"
-dest_files=["res://.godot/imported/player_1.png-c72efc4b74c0fe80bd2e6e18f69d9913.ctex"]
+source_file="res://icons/meat.png"
+dest_files=["res://.godot/imported/meat.png-074bdcdc96ab6152cb575c3956972551.ctex"]
 
 [params]
 
@@ -26,7 +23,7 @@ compress/rdo_quality_loss=0.0
 compress/hdr_compression=1
 compress/normal_map=0
 compress/channel_pack=0
-mipmaps/generate=true
+mipmaps/generate=false
 mipmaps/limit=-1
 roughness/mode=0
 roughness/src_normal=""

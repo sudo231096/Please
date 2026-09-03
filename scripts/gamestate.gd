@@ -31,6 +31,7 @@ var mouse_sens := 0.0025
 var buttons_left := true
 
 var last_pos := Vector3.ZERO  # позиция игрока для карты
+var return_to_pos := false    # вернуться на сохранённую позицию (после карты)
 
 # инвентарь / hotbar
 var selected_slot := 0

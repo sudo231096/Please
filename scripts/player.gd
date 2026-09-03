@@ -103,6 +103,14 @@ func _input(event: InputEvent) -> void:
 	if event is InputEventKey and event.pressed and not event.echo:
 		if event.keycode >= KEY_1 and event.keycode <= KEY_6:
 			GameState.selected_slot = event.keycode - KEY_1
+		elif event.keycode == KEY_TAB:
+			GameState.last_pos = global_position
+			GameState.return_to_pos = true
+			get_tree().change_scene_to_file("res://scenes/Inventory.tscn")
+		elif event.keycode == KEY_M:
+			GameState.last_pos = global_position
+			GameState.return_to_pos = true
+			get_tree().change_scene_to_file("res://scenes/Map.tscn")
 		elif event.keycode == KEY_R and GameState.build_mode:
 			GameState.build_rot += PI / 2.0  # поворот постройки на 90°
 		elif event.keycode == KEY_ESCAPE and GameState.build_mode:

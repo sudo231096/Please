@@ -119,24 +119,25 @@ func _build_world() -> void:
 
 
 func _build_player_model() -> void:
-	# скачанная модель игрока (мускулистый варвар в духе Rust)
+	# качественная скачанная модель игрока (риг + анимации)
 	var model: Node3D = preload("res://models/player.glb").instantiate()
 	add_child(model)
-	# модель ~25.6 юнитов ростом -> подгоняем под 1.8 м
-	model.scale = Vector3.ONE * (1.8 / 25.6)
+	# модель ~47 юнитов ростом -> подгоняем под ~1.9 м
+	model.scale = Vector3.ONE * (1.9 / 47.0)
 	model.rotation_degrees = Vector3(0, 180, 0)  # лицом к камере
-	# скрыть оружие (копьё, булаву, кинжал) — в Rust игрок без оружия в меню
-	for m in model.find_children("*", "MeshInstance3D", true, false):
-		var nm := String(m.name)
-		if nm.contains("weapon") or nm.contains("spear") or nm.contains("mace") or nm.contains("dagger"):
-			m.visible = false
+
+	# проиграть idle-анимацию, если есть
+	for ap in model.find_children("*", "AnimationPlayer", true, false):
+		if ap.has_animation("Idle"):
+			ap.play("Idle")
+		elif ap.has_animation("Action"):
+			ap.play("Action")
+
 	# поставить на землю по габаритам
 	await get_tree().process_frame
 	await get_tree().process_frame
 	var mn := Vector3(1e9, 1e9, 1e9)
 	for m in model.find_children("*", "MeshInstance3D", true, false):
-		if not m.visible:
-			continue
 		var aabb: AABB = m.mesh.get_aabb()
 		var t: Transform3D = m.global_transform
 		for i in range(8):

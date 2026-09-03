@@ -33,7 +33,9 @@ var _rocks_mm: MultiMesh
 func _ready() -> void:
 	add_to_group("terrain")
 	_rng.seed = randi()
-	GameState.reset_run()  # фикс бага: сбрасываем состояние при каждом запуске/рестарте
+	if not GameState.return_to_pos:
+		# свежий запуск или рестарт после смерти — сбрасываем прогресс
+		GameState.reset_run()
 	_build_sky()
 	_build_ground()
 	_build_trees()
@@ -455,7 +457,12 @@ func _ore_crystal(pos: Vector3, color: Color, emissive: Color) -> void:
 func _spawn_player() -> void:
 	_player = CharacterBody3D.new()
 	_player.set_script(PlayerScr)
-	var pos := _random_spot(20.0)
+	var pos: Vector3
+	if GameState.return_to_pos and GameState.last_pos != Vector3.ZERO:
+		pos = GameState.last_pos
+		GameState.return_to_pos = false
+	else:
+		pos = _random_spot(20.0)
 	_player.position = Vector3(pos.x, pos.y + 1.0, pos.z)
 	add_child(_player)
 
