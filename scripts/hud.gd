@@ -12,6 +12,7 @@ var _slots: Array = []
 var _over: Control
 var _craft: Control
 var _craft_list: VBoxContainer
+var _upgrade_list: VBoxContainer
 
 
 func bind(p: Node3D) -> void:
@@ -374,6 +375,34 @@ func _build_craft_menu() -> void:
 	_craft_list.add_theme_constant_override("separation", 6)
 	v.add_child(_craft_list)
 
+	var up_sep := HSeparator.new()
+	v.add_child(up_sep)
+
+	var up_title := Label.new()
+	up_title.text = "УЛУЧШЕНИЯ (нужен верстак)"
+	up_title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	up_title.add_theme_font_size_override("font_size", 18)
+	up_title.modulate = Color(0.7, 0.85, 1.0)
+	v.add_child(up_title)
+
+	_upgrade_list = VBoxContainer.new()
+	_upgrade_list.add_theme_constant_override("separation", 4)
+	v.add_child(_upgrade_list)
+
+	# кнопки улучшений (создаются один раз)
+	for kind in ["hp", "dmg", "speed", "harvest"]:
+		var ubtn := Button.new()
+		ubtn.focus_mode = Control.FOCUS_NONE
+		ubtn.add_theme_font_size_override("font_size", 15)
+		var k: String = kind
+		ubtn.pressed.connect(func() -> void:
+			if GameState.upgrade(k):
+				_refresh_craft()
+				refresh()
+		)
+		ubtn.name = "up_" + kind
+		_upgrade_list.add_child(ubtn)
+
 	var close := Button.new()
 	close.text = "Закрыть"
 	close.focus_mode = Control.FOCUS_NONE
@@ -411,6 +440,22 @@ func _refresh_craft() -> void:
 				refresh()
 		)
 		_craft_list.add_child(btn)
+	# обновить текст улучшений
+	_refresh_upgrades()
+
+
+func _refresh_upgrades() -> void:
+	var names := {"hp": "Здоровье +20", "dmg": "Урон +5", "speed": "Скорость +0.5", "harvest": "Добыча +50%"}
+	var lvls := {"hp": GameState.hp_level, "dmg": GameState.dmg_level, "speed": GameState.speed_level, "harvest": GameState.harvest_level}
+	for kind in names:
+		var btn := _upgrade_list.find_child("up_" + kind, true, false) as Button
+		if btn:
+			btn.text = "%s  —  %d дерева  (ур. %d)" % [names[kind], GameState.upgrade_cost(kind), lvls[kind]]
+			if not GameState.workbench_built:
+				btn.text = "%s (нужен верстак)" % names[kind]
+				btn.disabled = true
+			else:
+				btn.disabled = not GameState.can_upgrade(kind)
 
 
 func _on_died() -> void:

@@ -23,6 +23,7 @@ var _base_cam := Vector3(0, EYE_HEIGHT, 0)
 var _crouching := false
 var _target_eye := EYE_HEIGHT
 var _hud_ref: CanvasLayer = null
+var _tool: Node3D = null
 
 signal died
 
@@ -35,7 +36,53 @@ func _ready() -> void:
 	_cam.position = Vector3(0, EYE_HEIGHT, 0)
 	_cam.current = true
 	add_child(_cam)
+	_build_tool()
 	Input.set_mouse_mode(Input.MOUSE_MODE_CAPTURED)
+
+
+func _box(size: Vector3, color: Color) -> MeshInstance3D:
+	var m := MeshInstance3D.new()
+	var bm := BoxMesh.new()
+	bm.size = size
+	m.mesh = bm
+	var mat := StandardMaterial3D.new()
+	mat.albedo_color = color
+	mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	m.material_override = mat
+	return m
+
+
+func _build_tool() -> void:
+	_tool = Node3D.new()
+	_tool.position = Vector3(0.45, -0.4, -0.6)  # внизу справа от камеры
+	_cam.add_child(_tool)
+	if GameState.has_hatchet:
+		# топор: рукоять + лезвие
+		var handle := _box(Vector3(0.06, 0.6, 0.06), Color(0.42, 0.3, 0.16))
+		handle.position = Vector3(0, 0.1, 0)
+		_tool.add_child(handle)
+		var head := _box(Vector3(0.28, 0.08, 0.12), Color(0.6, 0.6, 0.65))
+		head.position = Vector3(0, 0.4, 0)
+		_tool.add_child(head)
+	elif GameState.has_pickaxe:
+		var handle := _box(Vector3(0.06, 0.6, 0.06), Color(0.42, 0.3, 0.16))
+		handle.position = Vector3(0, 0.1, 0)
+		_tool.add_child(handle)
+		var head := _box(Vector3(0.3, 0.08, 0.08), Color(0.55, 0.55, 0.6))
+		head.position = Vector3(0, 0.4, 0)
+		_tool.add_child(head)
+	else:
+		# камень
+		var stone := MeshInstance3D.new()
+		var sm := SphereMesh.new()
+		sm.radius = 0.12
+		sm.height = 0.2
+		stone.mesh = sm
+		var mat := StandardMaterial3D.new()
+		mat.albedo_color = Color(0.5, 0.5, 0.55)
+		mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+		stone.material_override = mat
+		_tool.add_child(stone)
 
 
 func _input(event: InputEvent) -> void:
@@ -118,8 +165,8 @@ func _physics_process(delta: float) -> void:
 			_crouching = false
 			_target_eye = EYE_HEIGHT
 
-	# скорость: при приседе медленнее
-	var spd := CROUCH_SPEED if _crouching else SPEED
+	# скорость: при приседе медленнее; базовая — с учётом прокачки
+	var spd := (CROUCH_SPEED if _crouching else GameState.player_speed())
 
 	# горизонтальное движение
 	global_position.x += wish.x * spd * delta
@@ -194,16 +241,20 @@ func _animate_cam(delta: float, moving: float) -> void:
 		_bob_t = 0.0
 		_base_cam = _base_cam.lerp(Vector3(0, eye, 0), delta * 12.0)
 
-	# анимация удара — замах камеры вниз
+	# анимация удара — замах камеры + инструмента
 	if _swing_t > 0.0:
 		_swing_t -= delta
 		var k := _swing_t / 0.28  # 1 -> 0
 		var dip := sin(k * PI) * 0.12
 		_cam.position = _base_cam + Vector3(0, -dip, 0)
 		_cam.rotation.z = sin(k * PI) * 0.06
+		if _tool:
+			_tool.rotation.x = -sin(k * PI) * 1.2  # замах инструмента
 	else:
 		_cam.position = _base_cam
 		_cam.rotation.z = 0.0
+		if _tool:
+			_tool.rotation.x = 0.0
 
 
 func _attack() -> void:

@@ -33,6 +33,7 @@ var _rocks_mm: MultiMesh
 func _ready() -> void:
 	add_to_group("terrain")
 	_rng.seed = randi()
+	GameState.reset_run()  # фикс бага: сбрасываем состояние при каждом запуске/рестарте
 	_build_sky()
 	_build_ground()
 	_build_trees()
@@ -615,6 +616,14 @@ func _make_building(kind: String, parent: Node3D, ghost: bool) -> void:
 		"bag":
 			_box_at(Vector3.ZERO, Vector3(0.9, 0.2, 2.0), Color(0.2, 0.35, 0.25) if not ghost else mat_col, parent)
 			_box_at(Vector3(0, 0.25, -0.9), Vector3(0.9, 0.25, 0.4), Color(0.15, 0.28, 0.2) if not ghost else mat_col, parent)
+		"workbench":
+			# верстак: стол + верстак
+			_box_at(Vector3.ZERO, Vector3(1.6, 0.1, 0.9), Color(0.5, 0.36, 0.2) if not ghost else mat_col, parent)
+			_box_at(Vector3(-0.6, 0, -0.3), Vector3(0.12, 0.9, 0.12), Color(0.4, 0.28, 0.16) if not ghost else mat_col, parent)
+			_box_at(Vector3(0.6, 0, -0.3), Vector3(0.12, 0.9, 0.12), Color(0.4, 0.28, 0.16) if not ghost else mat_col, parent)
+			_box_at(Vector3(-0.6, 0, 0.3), Vector3(0.12, 0.9, 0.12), Color(0.4, 0.28, 0.16) if not ghost else mat_col, parent)
+			_box_at(Vector3(0.6, 0, 0.3), Vector3(0.12, 0.9, 0.12), Color(0.4, 0.28, 0.16) if not ghost else mat_col, parent)
+			_box_at(Vector3(0, 0.35, 0), Vector3(1.3, 0.5, 0.6), Color(0.3, 0.3, 0.32) if not ghost else mat_col, parent)
 
 
 func _place_building(kind: String, origin: Vector3, look_dir: Vector3, rot: float = 0.0) -> void:

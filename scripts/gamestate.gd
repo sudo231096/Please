@@ -56,6 +56,7 @@ const RECIPES := {
 	"spear": {"name": "Копьё", "cost": {"wood": 100, "stone": 25}, "type": "weapon"},
 	"campfire": {"name": "Костёр", "cost": {"wood": 100}, "type": "build"},
 	"furnace": {"name": "Печь", "cost": {"stone": 200, "wood": 50}, "type": "build"},
+	"workbench": {"name": "Верстак", "cost": {"wood": 200, "stone": 100}, "type": "build"},
 	"wall": {"name": "Деревянная стена", "cost": {"wood": 50}, "type": "build"},
 	"floor": {"name": "Деревянный фундамент", "cost": {"wood": 100}, "type": "build"},
 	"door": {"name": "Деревянная дверь", "cost": {"wood": 100}, "type": "build"},
@@ -64,6 +65,13 @@ const RECIPES := {
 
 # счётчики построек
 var built := {"campfire": 0, "furnace": 0, "wall": 0, "floor": 0, "door": 0, "bag": 0}
+var workbench_built := false  # верстак построен — открывает дерево улучшений
+
+# дерево улучшений (прокачка через верстак)
+var hp_level := 0
+var dmg_level := 0
+var speed_level := 0
+var harvest_level := 0
 
 
 func _ready() -> void:
@@ -103,6 +111,11 @@ func reset_run() -> void:
 	has_pickaxe = false
 	has_bow = false
 	has_spear = false
+	workbench_built = false
+	hp_level = 0
+	dmg_level = 0
+	speed_level = 0
+	harvest_level = 0
 	for k in built:
 		built[k] = 0
 
@@ -185,14 +198,7 @@ func add_resource(name: String, n: int) -> void:
 		"meat": meat += n
 
 
-# множитель добычи дерева/камня с учётом инструментов
-func harvest_bonus() -> float:
-	var m := 1.0
-	if has_hatchet:
-		m *= 2.0
-	return m
-
-
+# множитель добычи камня/руды с учётом инструментов
 func mining_bonus() -> float:
 	var m := 1.0
 	if has_pickaxe:
@@ -206,7 +212,57 @@ func attack_damage() -> float:
 		d *= 1.5
 	if has_bow:
 		d *= 1.25
+	d += dmg_level * 5.0
 	return d
+
+
+# --- дерево улучшений ---
+
+func upgrade_cost(kind: String) -> int:
+	var lvl := 0
+	match kind:
+		"hp": lvl = hp_level
+		"dmg": lvl = dmg_level
+		"speed": lvl = speed_level
+		"harvest": lvl = harvest_level
+	return 50 + lvl * 50
+
+
+func can_upgrade(kind: String) -> bool:
+	if not workbench_built:
+		return false
+	var cost := upgrade_cost(kind)
+	return wood >= cost
+
+
+func upgrade(kind: String) -> bool:
+	if not can_upgrade(kind):
+		return false
+	wood -= upgrade_cost(kind)
+	match kind:
+		"hp":
+			hp_level += 1
+			max_hp += 20.0
+			hp = max_hp
+		"dmg":
+			dmg_level += 1
+		"speed":
+			speed_level += 1
+		"harvest":
+			harvest_level += 1
+	return true
+
+
+func player_speed() -> float:
+	return 6.0 + speed_level * 0.5
+
+
+func harvest_bonus() -> float:
+	var m := 1.0
+	if has_hatchet:
+		m *= 2.0
+	m += harvest_level * 0.5
+	return m
 
 
 func has_resource(name: String, n: int) -> bool:
@@ -252,5 +308,6 @@ func craft(id: String) -> bool:
 		"pickaxe": has_pickaxe = true
 		"bow": has_bow = true
 		"spear": has_spear = true
+		"workbench": workbench_built = true
 		_: built[id] = built.get(id, 0) + 1
 	return true
