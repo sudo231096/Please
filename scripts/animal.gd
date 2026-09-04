@@ -160,19 +160,37 @@ func _fit_model(m: Node3D, target_height: float) -> void:
 
 
 func _build_boar() -> void:
-	# кабан покрупнее (~1 м в холке)
-	var body := Color(0.35, 0.22, 0.16)
-	var dark := Color(0.2, 0.12, 0.1)
-	_box(Vector3(1.15, 0.9, 1.8), Vector3(0, 0.75, 0), body)
-	_sphere(0.5, Vector3(0, 1.35, -0.9), body)
-	_sphere(0.2, Vector3(0, 1.2, -1.4), dark)  # пятачок
-	# бивни
-	_box(Vector3(0.1, 0.1, 0.38), Vector3(-0.2, 1.1, -1.5), Color(0.9, 0.9, 0.8))
-	_box(Vector3(0.1, 0.1, 0.38), Vector3(0.2, 1.1, -1.5), Color(0.9, 0.9, 0.8))
-	_box(Vector3(0.32, 0.6, 0.32), Vector3(-0.5, 0.28, 0.65), dark)
-	_box(Vector3(0.32, 0.6, 0.32), Vector3(0.5, 0.28, 0.65), dark)
-	_box(Vector3(0.32, 0.6, 0.32), Vector3(-0.5, 0.28, -0.65), dark)
-	_box(Vector3(0.32, 0.6, 0.32), Vector3(0.5, 0.28, -0.65), dark)
+	# дикий кабан (~1.1 м в холке): коренастый, горбатая спина, длинное рыло, клыки
+	var body := Color(0.33, 0.2, 0.13)
+	var dark := Color(0.2, 0.11, 0.08)
+	var snout_c := Color(0.44, 0.29, 0.2)
+	var ivory := Color(0.95, 0.92, 0.8)
+
+	# туловище + горб (холка спереди выше зада)
+	_box(Vector3(1.05, 0.8, 1.75), Vector3(0, 0.6, -0.05), body)
+	_sphere(0.55, Vector3(0, 0.95, -0.5), body)   # холка
+	_sphere(0.45, Vector3(0, 0.68, 0.7), body)    # круп
+	# щетина-гребень вдоль спины
+	_box(Vector3(0.16, 0.3, 1.6), Vector3(0, 1.2, 0.0), dark)
+
+	# голова крупная, вытянутая вперёд (рыло вперёд, по ходу движения)
+	_sphere(0.45, Vector3(0, 0.9, -1.05), body)
+	_box(Vector3(0.42, 0.34, 0.5), Vector3(0, 0.82, -1.45), snout_c)  # рыло
+	_sphere(0.14, Vector3(0, 0.78, -1.72), Color(0.5, 0.32, 0.28))    # пятачок
+	# уши
+	_sphere(0.14, Vector3(-0.32, 1.25, -0.95), dark)
+	_sphere(0.14, Vector3(0.32, 1.25, -0.95), dark)
+	# клыки (загнутые вверх)
+	_box(Vector3(0.08, 0.26, 0.1), Vector3(-0.16, 0.6, -1.5), ivory)
+	_box(Vector3(0.08, 0.26, 0.1), Vector3(0.16, 0.6, -1.5), ivory)
+
+	# короткие крепкие ноги
+	_box(Vector3(0.3, 0.5, 0.3), Vector3(-0.4, 0.25, -0.5), dark)
+	_box(Vector3(0.3, 0.5, 0.3), Vector3(0.4, 0.25, -0.5), dark)
+	_box(Vector3(0.3, 0.5, 0.3), Vector3(-0.4, 0.25, 0.6), dark)
+	_box(Vector3(0.3, 0.5, 0.3), Vector3(0.4, 0.25, 0.6), dark)
+	# хвостик
+	_box(Vector3(0.1, 0.1, 0.3), Vector3(0, 0.95, 0.85), dark)
 
 
 func _ground_height() -> float:
