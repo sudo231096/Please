@@ -12,6 +12,7 @@ var _slots: Array = []
 var _over: Control
 var _craft: Control
 var _craft_list: VBoxContainer
+var _rot_btn: Button
 
 
 func bind(p: Node3D) -> void:
@@ -264,6 +265,24 @@ func _build() -> void:
 
 	_build_craft_menu()
 
+	# кнопка «Повернуть» (видна только в режиме строительства)
+	_rot_btn = Button.new()
+	_rot_btn.text = "ПОВЕРНУТЬ"
+	_rot_btn.focus_mode = Control.FOCUS_NONE
+	_rot_btn.anchor_left = 0.5
+	_rot_btn.anchor_right = 0.5
+	_rot_btn.anchor_top = 1.0
+	_rot_btn.anchor_bottom = 1.0
+	_rot_btn.offset_left = -90
+	_rot_btn.offset_right = 90
+	_rot_btn.offset_top = -190
+	_rot_btn.offset_bottom = -130
+	_rot_btn.add_theme_font_size_override("font_size", 20)
+	_rot_btn.modulate = Color(0.9, 0.75, 0.4)
+	_rot_btn.visible = false
+	_rot_btn.pressed.connect(func() -> void: GameState.build_rot += PI / 2.0)
+	add_child(_rot_btn)
+
 	# экран смерти
 	_over = Control.new()
 	_over.set_anchors_preset(Control.PRESET_FULL_RECT)
@@ -337,6 +356,7 @@ func _save_pos_and_go(scene: String) -> void:
 
 func _process(delta: float) -> void:
 	_update_bars()
+	_rot_btn.visible = GameState.build_mode
 
 
 func _update_bars() -> void:

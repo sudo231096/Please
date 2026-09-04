@@ -153,11 +153,23 @@ func _make_grass_mesh() -> ArrayMesh:
 	var verts := PackedVector3Array()
 	var cols := PackedColorArray()
 	var idx := PackedInt32Array()
-	var green := Color(0.28, 0.5, 0.2)
-	# тонкая травинка (две пересечённые плоскости)
-	var h := 1.0
-	_add_tri(verts, cols, idx, Vector3(0, 0, 0), Vector3(0, h, 0), Vector3(0.05, 0, 0), green)
-	_add_tri(verts, cols, idx, Vector3(0, 0, 0), Vector3(0, h, 0), Vector3(0, 0, 0.05), green)
+	var base_c := Color(0.24, 0.48, 0.18)
+	var tip_c := Color(0.4, 0.68, 0.28)
+	var h := 0.8
+	var w := 0.18
+	# пучок из 4 широких лезвий (крест-накрест), с градиентом основание->вершина
+	for i in range(4):
+		var ang := TAU * i / 4.0
+		var side := Vector3(-sin(ang), 0, cos(ang))
+		var b := verts.size()
+		var p0 := side * w
+		var p1 := -side * w
+		var p2 := -side * w * 0.25 + Vector3(0, h, 0)
+		var p3 := side * w * 0.25 + Vector3(0, h, 0)
+		verts.append_array([p0, p1, p2, p3])
+		cols.append(base_c); cols.append(base_c)
+		cols.append(tip_c); cols.append(tip_c)
+		idx.append_array([b, b + 1, b + 2, b, b + 2, b + 3])
 	var am := ArrayMesh.new()
 	var arrays := []
 	arrays.resize(Mesh.ARRAY_MAX)
@@ -416,10 +428,10 @@ func _build_grass() -> void:
 	var mm := MultiMesh.new()
 	mm.transform_format = MultiMesh.TRANSFORM_3D
 	mm.mesh = mesh
-	mm.instance_count = 2500
-	for i in range(2500):
+	mm.instance_count = 2000
+	for i in range(2000):
 		var pos := _random_spot(8.0)
-		var s := _rng.randf_range(0.5, 1.4)
+		var s := _rng.randf_range(0.6, 1.6)
 		var t := Transform3D(Basis(Vector3.UP, _rng.randf() * TAU), pos)
 		t = t.scaled(Vector3(s, s, s))
 		mm.set_instance_transform(i, t)
@@ -726,6 +738,7 @@ func _sphere_at(pos: Vector3, r: float, h: float, color: Color, parent: Node3D =
 
 # строит меши постройки в контейнер parent (локальные координаты от точки pos)
 func _make_building(kind: String, parent: Node3D, ghost: bool) -> void:
+	parent.scale = Vector3.ONE * 2.0  # все постройки в 2 раза больше
 	var mat_col := Color(0.42, 0.3, 0.16)
 	if ghost:
 		mat_col = Color(0.4, 1.0, 0.4, 0.45)
@@ -759,8 +772,8 @@ func _make_building(kind: String, parent: Node3D, ghost: bool) -> void:
 
 
 func _place_building(kind: String, origin: Vector3, look_dir: Vector3, rot: float = 0.0) -> void:
-	var px := origin.x + look_dir.x * 2.0
-	var pz := origin.z + look_dir.z * 2.0
+	var px := roundf(origin.x + look_dir.x * 2.0)
+	var pz := roundf(origin.z + look_dir.z * 2.0)
 	var py := _ground_height(px, pz)
 	var node := Node3D.new()
 	node.position = Vector3(px, py, pz)

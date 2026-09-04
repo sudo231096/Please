@@ -56,10 +56,10 @@ var learned_techs := {}
 
 # все рецепты (доступны только после изучения технологии)
 const RECIPES := {
-	"hatchet": {"name": "Каменный топор", "cost": {"wood": 100, "stone": 50}, "type": "tool", "tech": "woodwork"},
-	"pickaxe": {"name": "Каменная кирка", "cost": {"wood": 100, "stone": 50}, "type": "tool", "tech": "woodwork"},
-	"spear": {"name": "Копьё", "cost": {"wood": 100, "stone": 25}, "type": "weapon", "tech": "hunting"},
-	"bow": {"name": "Лук", "cost": {"wood": 100, "cloth": 50}, "type": "weapon", "tech": "hunting"},
+	"hatchet": {"name": "Каменный топор", "cost": {"wood": 25}, "type": "tool", "tech": "woodwork"},
+	"pickaxe": {"name": "Каменная кирка", "cost": {"wood": 25}, "type": "tool", "tech": "woodwork"},
+	"spear": {"name": "Копьё", "cost": {"wood": 50, "stone": 15}, "type": "weapon", "tech": "hunting"},
+	"bow": {"name": "Лук", "cost": {"wood": 50, "cloth": 25}, "type": "weapon", "tech": "hunting"},
 	"campfire": {"name": "Костёр", "cost": {"wood": 100}, "type": "build", "tech": "woodwork"},
 	"wall": {"name": "Деревянная стена", "cost": {"wood": 50}, "type": "build", "tech": "woodwork"},
 	"floor": {"name": "Деревянный фундамент", "cost": {"wood": 100}, "type": "build", "tech": "woodwork"},

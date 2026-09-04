@@ -116,12 +116,19 @@ func _input(event: InputEvent) -> void:
 		elif event.keycode == KEY_ESCAPE and GameState.build_mode:
 			GameState.build_mode = false
 	elif event is InputEventMouseButton and event.pressed:
-		if event.button_index == MOUSE_BUTTON_WHEEL_UP:
-			GameState.selected_slot = (GameState.selected_slot - 1 + 6) % 6
-		elif event.button_index == MOUSE_BUTTON_WHEEL_DOWN:
-			GameState.selected_slot = (GameState.selected_slot + 1) % 6
-		elif event.button_index == MOUSE_BUTTON_RIGHT and GameState.build_mode:
-			GameState.build_mode = false  # отмена строительства
+		if GameState.build_mode:
+			# в режиме строительства колесо поворачивает постройку (как в Rust)
+			if event.button_index == MOUSE_BUTTON_WHEEL_UP:
+				GameState.build_rot += PI / 2.0
+			elif event.button_index == MOUSE_BUTTON_WHEEL_DOWN:
+				GameState.build_rot -= PI / 2.0
+			elif event.button_index == MOUSE_BUTTON_RIGHT:
+				GameState.build_mode = false  # отмена строительства
+		else:
+			if event.button_index == MOUSE_BUTTON_WHEEL_UP:
+				GameState.selected_slot = (GameState.selected_slot - 1 + 6) % 6
+			elif event.button_index == MOUSE_BUTTON_WHEEL_DOWN:
+				GameState.selected_slot = (GameState.selected_slot + 1) % 6
 
 
 func _ground_height() -> float:
