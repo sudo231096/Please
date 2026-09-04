@@ -115,6 +115,8 @@ func _input(event: InputEvent) -> void:
 			GameState.build_rot += PI / 2.0  # поворот постройки на 90°
 		elif event.keycode == KEY_ESCAPE and GameState.build_mode:
 			GameState.build_mode = false
+		elif event.keycode == KEY_E:
+			_interact()  # открыть ящик с лутом
 	elif event is InputEventMouseButton and event.pressed:
 		if GameState.build_mode:
 			# в режиме строительства колесо поворачивает постройку (как в Rust)
@@ -133,6 +135,8 @@ func _input(event: InputEvent) -> void:
 
 func _ground_height() -> float:
 	var terrain := get_tree().get_first_node_in_group("terrain")
+	if terrain and terrain.has_method("_surface_height"):
+		return terrain._surface_height(global_position.x, global_position.z)
 	if terrain and terrain.has_method("_ground_height"):
 		return terrain._ground_height(global_position.x, global_position.z)
 	return 0.0
@@ -236,8 +240,10 @@ func _physics_process(delta: float) -> void:
 		if attack and _attack_cd <= 0.0:
 			_attack()
 
-	if Input.is_physical_key_pressed(KEY_E):
-		GameState.eat()
+	# взаимодействие с ящиками (кнопка «ВЗЯТЬ» на телефоне)
+	if has_meta("mob_interact") and bool(get_meta("mob_interact")):
+		set_meta("mob_interact", false)
+		_interact()
 	if Input.is_physical_key_pressed(KEY_Q):
 		GameState.drink()
 
@@ -294,6 +300,19 @@ func _attack() -> void:
 		if d <= ATTACK_RANGE and d > 0.01:
 			if fwd.dot(to.normalized()) > 0.4 and en.has_method("take_damage"):
 				en.take_damage(dmg)
+
+
+func _interact() -> void:
+	# открыть ближайший ящик с лутом
+	var terrain := get_tree().get_first_node_in_group("terrain")
+	if not terrain or not terrain.has_method("_interact_lootbox"):
+		return
+	var fwd := -_cam.global_transform.basis.z
+	fwd.y = 0.0
+	fwd = fwd.normalized()
+	var text: String = terrain._interact_lootbox(global_position, fwd)
+	if text != "" and _hud_ref and _hud_ref.has_method("toast"):
+		_hud_ref.toast(text)
 
 
 func take_damage(amount: float, from: Node = null) -> void:

@@ -16,6 +16,7 @@ var _rot_btn: Button
 var _study: Control
 var _study_list: VBoxContainer
 var _study_btn: Button
+var _toast: Label
 
 
 func bind(p: Node3D) -> void:
@@ -126,7 +127,7 @@ func _build() -> void:
 	add_child(th_icon)
 
 	var tip := Label.new()
-	tip.text = "WASD — ходьба · мышь — обзор · ЛКМ — удар · E — есть · Q — пить"
+	tip.text = "WASD — ходьба · мышь — обзор · ЛКМ — удар · E — открыть ящик · Q — пить"
 	tip.anchor_top = 1.0
 	tip.anchor_bottom = 1.0
 	tip.offset_left = 16
@@ -208,6 +209,23 @@ func _build() -> void:
 	atk.add_theme_font_size_override("font_size", 26)
 	atk.button_down.connect(func() -> void: _player.set_meta("mob_attack", true))
 	add_child(atk)
+
+	# кнопка «ВЗЯТЬ» (открыть ящик с лутом)
+	var take_btn := Button.new()
+	take_btn.text = "ВЗЯТЬ"
+	take_btn.focus_mode = Control.FOCUS_NONE
+	take_btn.anchor_left = side_anchor
+	take_btn.anchor_right = side_anchor
+	take_btn.anchor_top = 1.0
+	take_btn.anchor_bottom = 1.0
+	take_btn.offset_left = -170 if on_right else 20
+	take_btn.offset_right = -20 if on_right else 170
+	take_btn.offset_top = -420
+	take_btn.offset_bottom = -320
+	take_btn.add_theme_font_size_override("font_size", 22)
+	take_btn.modulate = Color(0.95, 0.85, 0.4)
+	take_btn.pressed.connect(func() -> void: _player.set_meta("mob_interact", true))
+	add_child(take_btn)
 
 	# кнопка «использовать» (съесть/выпить активный предмет)
 	var use_btn := Button.new()
@@ -590,3 +608,27 @@ func _refresh_craft() -> void:
 
 func _on_died() -> void:
 	_over.visible = true
+
+
+func toast(msg: String) -> void:
+	# всплывающее сообщение (что забрал из ящика и т.п.)
+	if _toast == null:
+		_toast = Label.new()
+		_toast.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		_toast.anchor_left = 0.2
+		_toast.anchor_right = 0.8
+		_toast.anchor_top = 0.3
+		_toast.anchor_bottom = 0.4
+		_toast.add_theme_font_size_override("font_size", 30)
+		_toast.modulate = Color(1, 0.95, 0.6)
+		add_child(_toast)
+	_toast.text = msg
+	_toast.visible = true
+	_toast.modulate.a = 1.0
+	var tw := create_tween()
+	tw.tween_interval(1.3)
+	tw.tween_property(_toast, "modulate:a", 0.0, 0.5)
+	tw.tween_callback(func() -> void:
+		_toast.visible = false
+		_toast.modulate.a = 1.0
+	)

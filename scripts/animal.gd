@@ -177,6 +177,8 @@ func _build_boar() -> void:
 
 func _ground_height() -> float:
 	var terrain := get_tree().get_first_node_in_group("terrain")
+	if terrain and terrain.has_method("_surface_height"):
+		return terrain._surface_height(global_position.x, global_position.z)
 	if terrain and terrain.has_method("_ground_height"):
 		return terrain._ground_height(global_position.x, global_position.z)
 	return 0.0

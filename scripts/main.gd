@@ -27,7 +27,7 @@ var _tree_spots: Array = []      # [{pos, index, alive}]
 var _rock_spots: Array = []      # [{pos, index, alive}]
 var _ore_spots: Array = []       # [{pos, kind, alive}]
 var _barrel_spots: Array = []    # [{pos, alive, node}]
-var _loot_spots: Array = []      # [{pos, alive, node}]
+var _loot_spots: Array = []      # [{pos, opened, node, lid}]
 var _puddles: Array = []         # [{x, z, r}]
 var _trees_mm: MultiMesh
 var _rocks_mm: MultiMesh
@@ -88,6 +88,26 @@ func _ground_height(x: float, z: float) -> float:
 			var k := 1.0 - d / r  # 1 в центре, 0 на краю
 			h = lerpf(h, -0.7, k * 0.75)
 	return h
+
+
+func _surface_height(x: float, z: float) -> float:
+	# точная высота видимого меша (билинейная интерполяция сетки высот) — объекты не «летают»
+	if _heights.size() == 0:
+		return _ground_height(x, z)
+	var n := TERRAIN_N + 1
+	var fx := (x + HALF) / TERRAIN_CELL
+	var fz := (z + HALF) / TERRAIN_CELL
+	var x0 := clampi(int(floor(fx)), 0, TERRAIN_N - 1)
+	var z0 := clampi(int(floor(fz)), 0, TERRAIN_N - 1)
+	var x1 := mini(x0 + 1, TERRAIN_N)
+	var z1 := mini(z0 + 1, TERRAIN_N)
+	var tx := fx - float(x0)
+	var tz := fz - float(z0)
+	var h00 := _heights[z0 * n + x0]
+	var h10 := _heights[z0 * n + x1]
+	var h01 := _heights[z1 * n + x0]
+	var h11 := _heights[z1 * n + x1]
+	return lerpf(lerpf(h00, h10, tx), lerpf(h01, h11, tx), tz)
 
 
 func _build_puddles() -> void:
@@ -205,10 +225,10 @@ func _make_grass_mesh() -> ArrayMesh:
 	var norms := PackedVector3Array()
 	var cols := PackedColorArray()
 	var idx := PackedInt32Array()
-	var base_c := Color(0.3, 0.6, 0.22)
-	var tip_c := Color(0.5, 0.8, 0.34)
+	var base_c := Color(0.36, 0.66, 0.26)
+	var tip_c := Color(0.52, 0.82, 0.36)
 	var h := 1.0
-	var w := 0.22
+	var w := 0.28
 	# пучок из 5 широких лезвий, нормали вверх (освещается солнцем — ярко-зелёная)
 	for i in range(5):
 		var ang := TAU * i / 5.0
@@ -280,6 +300,16 @@ func _vertex_color_material() -> StandardMaterial3D:
 	return m
 
 
+func _grass_material() -> StandardMaterial3D:
+	# трава НЕ освещается — цвет берётся из вершинных цветов напрямую (всегда зелёная)
+	var m := StandardMaterial3D.new()
+	m.vertex_color_use_as_albedo = true
+	m.albedo_color = Color(0.4, 0.7, 0.3)
+	m.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	m.cull_mode = BaseMaterial3D.CULL_DISABLED
+	return m
+
+
 func _terrain_material() -> StandardMaterial3D:
 	# освещённый рельеф: вершинные цвета + солнце + тени (глубина, а не плоское «мыло»)
 	var m := StandardMaterial3D.new()
@@ -330,27 +360,37 @@ func _build_sky() -> void:
 	env.ambient_light_energy = 1.0
 	env.fog_enabled = true
 	env.fog_light_color = Color(0.6, 0.7, 0.8)
-	env.fog_density = 0.002
-	env.fog_sky_affect = 0.4
+	env.fog_density = 0.0015
+	env.fog_sky_affect = 0.35
 	var we := WorldEnvironment.new()
 	we.environment = env
 	add_child(we)
 
 	var sun := DirectionalLight3D.new()
-	sun.rotation_degrees = Vector3(-50, 40, 0)
-	sun.light_energy = 1.4
+	sun.rotation_degrees = Vector3(-45, 35, 0)
+	sun.light_energy = 1.5
 	sun.shadow_enabled = true
-	sun.directional_shadow_max_distance = 200.0
+	sun.directional_shadow_max_distance = 120.0
 	sun.directional_shadow_blend_splits = true
 	add_child(sun)
+	# видимое солнце в небе (яркий светящийся диск + мягкое гало)
 	var disc := MeshInstance3D.new()
 	var sm := SphereMesh.new()
-	sm.radius = 6.0
-	sm.height = 12.0
+	sm.radius = 16.0
+	sm.height = 16.0
 	disc.mesh = sm
-	disc.material_override = _mat(Color(1.0, 0.95, 0.7), Color(1.0, 0.9, 0.5))
-	disc.position = Vector3(0, 80, -60)
+	disc.material_override = _mat(Color(1.0, 0.97, 0.72), Color(1.0, 0.88, 0.4))
+	disc.position = Vector3(160, 130, -260)
 	add_child(disc)
+	var halo := MeshInstance3D.new()
+	var hm := SphereMesh.new()
+	hm.radius = 30.0
+	hm.height = 30.0
+	halo.mesh = hm
+	var hmat := _mat(Color(1.0, 0.9, 0.55, 0.35), Color(1.0, 0.8, 0.3))
+	halo.material_override = hmat
+	halo.position = disc.position
+	add_child(halo)
 
 
 func _build_ground() -> void:
@@ -443,7 +483,7 @@ func _random_spot(min_r: float) -> Vector3:
 	var r := _rng.randf_range(min_r, HALF - 20.0)
 	var x := cos(ang) * r
 	var z := sin(ang) * r
-	return Vector3(x, _ground_height(x, z), z)
+	return Vector3(x, _surface_height(x, z), z)
 
 
 func _grid_spot(grid_size: float, jitter: float) -> Vector3:
@@ -454,7 +494,7 @@ func _grid_spot(grid_size: float, jitter: float) -> Vector3:
 	var cz := _rng.randi_range(0, cols - 1)
 	var x := -HALF + (cx + 0.5) * cell + _rng.randf_range(-jitter, jitter)
 	var z := -HALF + (cz + 0.5) * cell + _rng.randf_range(-jitter, jitter)
-	return Vector3(x, _ground_height(x, z), z)
+	return Vector3(x, _surface_height(x, z), z)
 
 
 # ---------- деревья / камни / руды / трава (MultiMesh — оптимизация) ----------
@@ -464,9 +504,9 @@ func _build_trees() -> void:
 	var mm := MultiMesh.new()
 	mm.transform_format = MultiMesh.TRANSFORM_3D
 	mm.mesh = mesh
-	mm.instance_count = 350
+	mm.instance_count = 250
 	_tree_spots.clear()
-	for i in range(350):
+	for i in range(250):
 		# равномерно по карте, ближе друг к другу
 		var pos := _grid_spot(28.0, 10.0)
 		var big := _rng.randf() < 0.35
@@ -478,6 +518,7 @@ func _build_trees() -> void:
 	var inst := MultiMeshInstance3D.new()
 	inst.multimesh = mm
 	inst.material_override = _terrain_material()
+	inst.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	inst.name = "Trees"
 	add_child(inst)
 	_trees_mm = mm
@@ -499,6 +540,7 @@ func _build_rocks() -> void:
 	var inst := MultiMeshInstance3D.new()
 	inst.multimesh = mm
 	inst.material_override = _terrain_material()
+	inst.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	inst.name = "Rocks"
 	add_child(inst)
 	_rocks_mm = mm
@@ -509,17 +551,18 @@ func _build_grass() -> void:
 	var mm := MultiMesh.new()
 	mm.transform_format = MultiMesh.TRANSFORM_3D
 	mm.mesh = mesh
-	mm.instance_count = 4000
-	for i in range(4000):
+	mm.instance_count = 1800
+	for i in range(1800):
 		var pos := _random_spot(8.0)
-		pos.y += 0.4  # приподнимаем над рельефом (иначе «тонет» и выглядит чёрной)
+		pos.y += 0.08  # чуть выше рельефа, чтобы не тонула и не зирила с ним
 		var s := _rng.randf_range(0.7, 1.8)
 		var t := Transform3D(Basis(Vector3.UP, _rng.randf() * TAU), pos)
 		t = t.scaled(Vector3(s, s, s))
 		mm.set_instance_transform(i, t)
 	var inst := MultiMeshInstance3D.new()
 	inst.multimesh = mm
-	inst.material_override = _terrain_material()  # освещённая, как рельеф
+	inst.material_override = _grass_material()  # НЕ освещённая — всегда ярко-зелёная
+	inst.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	add_child(inst)
 
 
@@ -632,7 +675,7 @@ func _cyl_at(pos: Vector3, r: float, h: float, color: Color, parent: Node3D = nu
 
 
 func _add_barrel(x: float, z: float) -> void:
-	var y := _ground_height(x, z)
+	var y := _surface_height(x, z)
 	var node := Node3D.new()
 	node.position = Vector3(x, y, z)
 	var body := MeshInstance3D.new()
@@ -658,7 +701,7 @@ func _add_barrel(x: float, z: float) -> void:
 
 
 func _add_lootbox(x: float, z: float) -> void:
-	var y := _ground_height(x, z)
+	var y := _surface_height(x, z)
 	var node := Node3D.new()
 	node.position = Vector3(x, y, z)
 	var crate := MeshInstance3D.new()
@@ -667,6 +710,7 @@ func _add_lootbox(x: float, z: float) -> void:
 	crate.mesh = cm
 	crate.material_override = _mat(Color(0.5, 0.4, 0.24))
 	crate.position = Vector3(0, 0.45, 0)
+	crate.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	node.add_child(crate)
 	var lid := MeshInstance3D.new()
 	var lm := BoxMesh.new()
@@ -674,9 +718,53 @@ func _add_lootbox(x: float, z: float) -> void:
 	lid.mesh = lm
 	lid.material_override = _mat(Color(0.33, 0.26, 0.16))
 	lid.position = Vector3(0, 0.95, 0)
+	lid.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	node.add_child(lid)
 	add_child(node)
-	_loot_spots.append({"pos": Vector3(x, y, z), "alive": true, "node": node})
+	_loot_spots.append({"pos": Vector3(x, y, z), "opened": false, "node": node, "lid": lid})
+
+
+# открыть ящик и забрать лут (не ломая его)
+func _interact_lootbox(origin: Vector3, look_dir: Vector3) -> String:
+	var best: Dictionary = {}
+	var best_d := 3.4
+	for l in _loot_spots:
+		if l["opened"]:
+			continue
+		if _ahead(l["pos"], origin, look_dir, best_d):
+			var d: float = (l["pos"] - origin).length()
+			if d < best_d:
+				best_d = d
+				best = l
+	if best.is_empty():
+		return ""
+	best["opened"] = true
+	var roll := _rng.randi_range(0, 3)
+	var text := ""
+	if roll == 0:
+		var n := _rng.randi_range(2, 5)
+		GameState.add_resource("water", n)
+		text = "Вода +%d" % n
+	elif roll == 1:
+		var n := _rng.randi_range(1, 3)
+		GameState.add_resource("meat", n)
+		text = "Еда +%d" % n
+	elif roll == 2:
+		var n := _rng.randi_range(5, 15)
+		GameState.add_resource("metal", n)
+		text = "Металл +%d" % n
+	else:
+		var n := _rng.randi_range(15, 40)
+		GameState.add_resource("scrap", n)
+		text = "Скрап +%d" % n
+	# анимация: крышка откидывается
+	var lid: Node3D = best["lid"]
+	var tw := create_tween()
+	tw.tween_property(lid, "position:y", lid.position.y + 0.6, 0.4).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+	tw.parallel().tween_property(lid, "rotation:x", -0.9, 0.4)
+	if _hud:
+		_hud.refresh()
+	return text
 
 
 func _build_barrels() -> void:
@@ -701,26 +789,26 @@ func _build_monuments() -> void:
 			"npp": _build_npp(mp.x, mp.z)
 
 
+func _add_monument_model(path: String, x: float, z: float) -> Node3D:
+	# скачанная качественная модель монумента (ставится основанием на рельеф)
+	var model: Node3D = load(path).instantiate()
+	var y := _surface_height(x, z)
+	model.position = Vector3(x, y, z)
+	add_child(model)
+	return model
+
+
 func _build_warehouse(x: float, z: float) -> void:
-	var y := _ground_height(x, z)
-	var base := Node3D.new()
-	base.position = Vector3(x, y, z)
-	add_child(base)
-	var wall := Color(0.55, 0.52, 0.5)
-	var roof := Color(0.3, 0.3, 0.34)
-	_box_at(Vector3(0, 0, 12), Vector3(30, 7, 0.4), wall, base)
-	_box_at(Vector3(0, 0, -12), Vector3(30, 7, 0.4), wall, base)
-	_box_at(Vector3(-15, 0, 0), Vector3(0.4, 7, 24), wall, base)
-	_box_at(Vector3(15, 0, 0), Vector3(0.4, 7, 24), wall, base)
-	_box_at(Vector3(0, 7, 0), Vector3(30.6, 0.4, 24.6), roof, base)
-	_add_lootbox(x + 3, z + 3)
-	_add_lootbox(x - 3, z + 4)
-	_add_lootbox(x, z - 3)
-	_add_lootbox(x + 5, z - 2)
+	# скачанная модель склада (43×59 м)
+	_add_monument_model("res://models/monument_warehouse.glb", x, z)
+	_add_lootbox(x + 8, z + 10)
+	_add_lootbox(x - 8, z + 12)
+	_add_lootbox(x + 2, z - 12)
+	_add_lootbox(x - 6, z - 10)
 
 
 func _build_parking(x: float, z: float) -> void:
-	var y := _ground_height(x, z)
+	var y := _surface_height(x, z)
 	var base := Node3D.new()
 	base.position = Vector3(x, y, z)
 	add_child(base)
@@ -736,7 +824,7 @@ func _build_parking(x: float, z: float) -> void:
 
 
 func _build_factory(x: float, z: float) -> void:
-	var y := _ground_height(x, z)
+	var y := _surface_height(x, z)
 	var base := Node3D.new()
 	base.position = Vector3(x, y, z)
 	add_child(base)
@@ -757,22 +845,12 @@ func _build_factory(x: float, z: float) -> void:
 
 
 func _build_npp(x: float, z: float) -> void:
-	var y := _ground_height(x, z)
-	var base := Node3D.new()
-	base.position = Vector3(x, y, z)
-	add_child(base)
-	_box_at(Vector3(0, 0, 0), Vector3(20, 12, 20), Color(0.5, 0.5, 0.52), base)
-	_box_at(Vector3(0, 12, 0), Vector3(12, 8, 12), Color(0.55, 0.55, 0.57), base)
-	_cyl_at(Vector3(-22, 0, 0), 6.0, 22.0, Color(0.6, 0.6, 0.62), base)
-	_cyl_at(Vector3(22, 0, 0), 6.0, 22.0, Color(0.6, 0.6, 0.62), base)
-	_cyl_at(Vector3(-22, 0, 0), 4.0, 24.0, Color(0.55, 0.55, 0.57), base)
-	_cyl_at(Vector3(22, 0, 0), 4.0, 24.0, Color(0.55, 0.55, 0.57), base)
-	_sphere_at(Vector3(-22, 26, 0), 2.5, 2.5, Color(0.8, 0.85, 0.9), base)
-	_sphere_at(Vector3(22, 26, 0), 2.5, 2.5, Color(0.8, 0.85, 0.9), base)
-	_add_lootbox(x + 5, z + 5)
-	_add_lootbox(x - 5, z + 6)
-	_add_lootbox(x + 6, z - 5)
-	_add_lootbox(x - 6, z - 5)
+	# скачанная модель электростанции (реактор + трубы, 33×33 м)
+	_add_monument_model("res://models/monument_npp.glb", x, z)
+	_add_lootbox(x + 8, z + 8)
+	_add_lootbox(x - 8, z + 9)
+	_add_lootbox(x + 9, z - 8)
+	_add_lootbox(x - 9, z - 8)
 
 
 # ---------- игрок / животные / HUD ----------
@@ -799,7 +877,7 @@ func _spawn_guaranteed_resources(center: Vector3) -> void:
 		var r := 7.0
 		var dx := center.x + cos(a) * r
 		var dz := center.z + sin(a) * r
-		var tp := Vector3(dx, _ground_height(dx, dz), dz)
+		var tp := Vector3(dx, _surface_height(dx, dz), dz)
 		var tree := MeshInstance3D.new()
 		tree.mesh = _make_tree_mesh()
 		tree.material_override = _vertex_color_material()
@@ -812,7 +890,7 @@ func _spawn_guaranteed_resources(center: Vector3) -> void:
 		var a := TAU * i / 3.0 + 0.5
 		var dx := center.x + cos(a) * 9.0
 		var dz := center.z + sin(a) * 9.0
-		var rp := Vector3(dx, _ground_height(dx, dz), dz)
+		var rp := Vector3(dx, _surface_height(dx, dz), dz)
 		var rock := MeshInstance3D.new()
 		rock.mesh = _make_rock_mesh()
 		rock.material_override = _vertex_color_material()
@@ -823,7 +901,7 @@ func _spawn_guaranteed_resources(center: Vector3) -> void:
 	# валун серы
 	var sx := center.x + 6.0
 	var sz := center.z + 6.0
-	var sp := Vector3(sx, _ground_height(sx, sz), sz)
+	var sp := Vector3(sx, _surface_height(sx, sz), sz)
 	var scont := Node3D.new()
 	scont.position = sp
 	add_child(scont)
@@ -910,13 +988,6 @@ func _harvest(origin: Vector3, look_dir: Vector3) -> String:
 				best_d = d
 				best_kind = "barrel"
 				best_spot = b
-	for l in _loot_spots:
-		if l["alive"] and _ahead(l["pos"], origin, look_dir, best_d):
-			var d: float = (l["pos"] - origin).length()
-			if d < best_d:
-				best_d = d
-				best_kind = "lootbox"
-				best_spot = l
 	if best_kind == "":
 		return ""
 
@@ -943,18 +1014,6 @@ func _harvest(origin: Vector3, look_dir: Vector3) -> String:
 		"barrel":
 			# бочка даёт от 10 до 50 скрапа
 			GameState.add_resource("scrap", _rng.randi_range(10, 50))
-			_remove_resource(best_spot, null)
-		"lootbox":
-			# случайный лут: вода/еда/металл/скрап
-			var roll := _rng.randi_range(0, 3)
-			if roll == 0:
-				GameState.add_resource("water", _rng.randi_range(2, 5))
-			elif roll == 1:
-				GameState.add_resource("meat", _rng.randi_range(1, 3))
-			elif roll == 2:
-				GameState.add_resource("metal", _rng.randi_range(5, 15))
-			else:
-				GameState.add_resource("scrap", _rng.randi_range(15, 40))
 			_remove_resource(best_spot, null)
 	if _hud:
 		_hud.refresh()
@@ -1045,7 +1104,7 @@ func _make_building(kind: String, parent: Node3D, ghost: bool) -> void:
 func _place_building(kind: String, origin: Vector3, look_dir: Vector3, rot: float = 0.0) -> void:
 	var px := roundf(origin.x + look_dir.x * 2.0)
 	var pz := roundf(origin.z + look_dir.z * 2.0)
-	var py := _ground_height(px, pz)
+	var py := _surface_height(px, pz)
 	var node := Node3D.new()
 	node.position = Vector3(px, py, pz)
 	node.rotation.y = rot
@@ -1081,5 +1140,5 @@ func _process(delta: float) -> void:
 		# привязка к сетке 1 м
 		px = roundf(px)
 		pz = roundf(pz)
-		_ghost.position = Vector3(px, _ground_height(px, pz), pz)
+		_ghost.position = Vector3(px, _surface_height(px, pz), pz)
 		_ghost.rotation.y = GameState.build_rot
