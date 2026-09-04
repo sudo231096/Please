@@ -178,9 +178,25 @@ func reset_run() -> void:
 	pending_build = ""
 
 
+const SURVIVAL_PERIOD := 600.0  # 10 минут на цикл списания
+const THIRST_DRAIN := 15.0       # -15 жажды за 10 минут
+const HUNGER_DRAIN := 10.0       # -10 голода за 10 минут (медленнее)
+
+var _survival_acc := 0.0
+
+
 func tick(delta: float) -> void:
-	hunger = maxf(0.0, hunger - delta * 0.35)
-	thirst = maxf(0.0, thirst - delta * 0.5)
+	# списание голода/жажды по накопительному таймеру (раз в 10 минут),
+	# чтобы не ускоряться при открытии меню и не давать двойного списания
+	_survival_acc += delta
+	var steps := 0
+	while _survival_acc >= SURVIVAL_PERIOD:
+		_survival_acc -= SURVIVAL_PERIOD
+		steps += 1
+	if steps > 0:
+		thirst = maxf(0.0, thirst - THIRST_DRAIN * steps)
+		hunger = maxf(0.0, hunger - HUNGER_DRAIN * steps)
+	# урон только если показатель на нуле
 	if hunger <= 0.0:
 		hp = maxf(0.0, hp - delta * 1.2)
 	if thirst <= 0.0:
@@ -554,18 +570,23 @@ func _finish_craft(id: String) -> void:
 		"hatchet":
 			items["hatchet"] = int(items.get("hatchet", 0)) + 1
 			has_hatchet = true
+			auto_assign_hotbar("hatchet")
 		"pickaxe":
 			items["pickaxe"] = int(items.get("pickaxe", 0)) + 1
 			has_pickaxe = true
+			auto_assign_hotbar("pickaxe")
 		"bow":
 			items["bow"] = int(items.get("bow", 0)) + 1
 			has_bow = true
+			auto_assign_hotbar("bow")
 		"spear":
 			items["spear"] = int(items.get("spear", 0)) + 1
 			has_spear = true
+			auto_assign_hotbar("spear")
 		"torch":
 			items["torch"] = int(items.get("torch", 0)) + 1
 			has_torch = true
+			auto_assign_hotbar("torch")
 		"arrow":
 			items["arrow"] = int(items.get("arrow", 0)) + 5
 			arrows += 5
@@ -578,6 +599,18 @@ func _finish_craft(id: String) -> void:
 			if RECIPES[id]["type"] == "build":
 				built[id] = built.get(id, 0) + 1
 				pending_build = id
+
+
+# автоматически положить инструмент в первый свободный слот хотбара
+func auto_assign_hotbar(id: String) -> void:
+	if hotbar.has(id):
+		return  # уже в хотбаре
+	for i in range(hotbar.size()):
+		if hotbar[i] == "":
+			hotbar[i] = id
+			return
+	# нет свободного — кладём в выбранный слот
+	hotbar[selected_slot] = id
 
 
 # отменить крафт в очереди (вернуть ресурсы)

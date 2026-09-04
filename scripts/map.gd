@@ -29,6 +29,7 @@ var _mouse := Vector2.ZERO
 
 func _ready() -> void:
 	set_anchors_preset(Control.PRESET_FULL_RECT)
+	Input.set_mouse_mode(Input.MOUSE_MODE_VISIBLE)  # курсор виден на карте
 	# лужи (тот же сид, что и в main.gd)
 	var rng := RandomNumberGenerator.new()
 	rng.seed = 424242

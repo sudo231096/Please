@@ -24,6 +24,7 @@ var _crouching := false
 var _target_eye := EYE_HEIGHT
 var _hud_ref: CanvasLayer = null
 var _tool: Node3D = null
+var _tool_key := ""
 
 signal died
 
@@ -53,36 +54,72 @@ func _box(size: Vector3, color: Color) -> MeshInstance3D:
 
 
 func _build_tool() -> void:
+	if _tool:
+		_tool.queue_free()
 	_tool = Node3D.new()
-	_tool.position = Vector3(0.45, -0.4, -0.6)  # внизу справа от камеры
+	_tool.position = Vector3(0.42, -0.42, -0.55)  # точка крепления у «кисти» (внизу справа камеры)
 	_cam.add_child(_tool)
-	if GameState.has_hatchet:
-		# топор: рукоять + лезвие
-		var handle := _box(Vector3(0.06, 0.6, 0.06), Color(0.42, 0.3, 0.16))
-		handle.position = Vector3(0, 0.1, 0)
-		_tool.add_child(handle)
-		var head := _box(Vector3(0.28, 0.08, 0.12), Color(0.6, 0.6, 0.65))
-		head.position = Vector3(0, 0.4, 0)
-		_tool.add_child(head)
-	elif GameState.has_pickaxe:
-		var handle := _box(Vector3(0.06, 0.6, 0.06), Color(0.42, 0.3, 0.16))
-		handle.position = Vector3(0, 0.1, 0)
-		_tool.add_child(handle)
-		var head := _box(Vector3(0.3, 0.08, 0.08), Color(0.55, 0.55, 0.6))
-		head.position = Vector3(0, 0.4, 0)
-		_tool.add_child(head)
-	else:
-		# камень
-		var stone := MeshInstance3D.new()
-		var sm := SphereMesh.new()
-		sm.radius = 0.12
-		sm.height = 0.2
-		stone.mesh = sm
-		var mat := StandardMaterial3D.new()
-		mat.albedo_color = Color(0.5, 0.5, 0.55)
-		mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
-		stone.material_override = mat
-		_tool.add_child(stone)
+	var key := ""
+	if GameState.selected_slot >= 0 and GameState.selected_slot < GameState.hotbar.size():
+		key = GameState.hotbar[GameState.selected_slot]
+	_tool_key = key
+	match key:
+		"hatchet":
+			# топор: рукоять + лезвие (лезвие вперёд-вверх)
+			var handle := _box(Vector3(0.06, 0.6, 0.06), Color(0.42, 0.3, 0.16))
+			handle.position = Vector3(0, 0.05, 0)
+			handle.rotation_degrees = Vector3(-20, 0, 0)
+			_tool.add_child(handle)
+			var head := _box(Vector3(0.3, 0.09, 0.14), Color(0.6, 0.6, 0.65))
+			head.position = Vector3(0, 0.4, 0)
+			head.rotation_degrees = Vector3(-20, 0, 0)
+			_tool.add_child(head)
+		"pickaxe":
+			var handle := _box(Vector3(0.06, 0.6, 0.06), Color(0.42, 0.3, 0.16))
+			handle.position = Vector3(0, 0.05, 0)
+			handle.rotation_degrees = Vector3(-20, 0, 0)
+			_tool.add_child(handle)
+			var head := _box(Vector3(0.32, 0.08, 0.08), Color(0.55, 0.55, 0.6))
+			head.position = Vector3(0, 0.4, 0)
+			head.rotation_degrees = Vector3(-20, 0, 0)
+			_tool.add_child(head)
+		"spear":
+			# копьё: длинное древко + наконечник
+			var shaft := _box(Vector3(0.05, 1.0, 0.05), Color(0.45, 0.32, 0.18))
+			shaft.position = Vector3(0, 0.25, 0)
+			shaft.rotation_degrees = Vector3(-25, 0, 0)
+			_tool.add_child(shaft)
+			var tip := _box(Vector3(0.1, 0.2, 0.08), Color(0.7, 0.7, 0.75))
+			tip.position = Vector3(0, 0.85, 0)
+			tip.rotation_degrees = Vector3(-25, 0, 0)
+			_tool.add_child(tip)
+		"bow":
+			# лук: дуга + тетива (упрощённо)
+			var limb := _box(Vector3(0.06, 0.8, 0.06), Color(0.5, 0.36, 0.2))
+			limb.position = Vector3(0, 0.1, 0)
+			limb.rotation_degrees = Vector3(0, 0, 20)
+			_tool.add_child(limb)
+		_:
+			# камень по умолчанию
+			var stone := MeshInstance3D.new()
+			var sm := SphereMesh.new()
+			sm.radius = 0.12
+			sm.height = 0.2
+			stone.mesh = sm
+			var mat := StandardMaterial3D.new()
+			mat.albedo_color = Color(0.5, 0.5, 0.55)
+			mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+			stone.material_override = mat
+			_tool.add_child(stone)
+
+
+func _update_tool() -> void:
+	# перестроить инструмент, если сменился выбранный слот
+	var key := ""
+	if GameState.selected_slot >= 0 and GameState.selected_slot < GameState.hotbar.size():
+		key = GameState.hotbar[GameState.selected_slot]
+	if key != _tool_key:
+		_build_tool()
 
 
 func _input(event: InputEvent) -> void:
@@ -145,6 +182,7 @@ func _ground_height() -> float:
 func _physics_process(delta: float) -> void:
 	_attack_cd = maxf(0.0, _attack_cd - delta)
 	_hurt_cd = maxf(0.0, _hurt_cd - delta)
+	_update_tool()
 
 	GameState.tick(delta)
 	if GameState.hp <= 0.0:

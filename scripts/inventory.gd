@@ -22,6 +22,7 @@ var _model: Node3D
 
 func _ready() -> void:
 	set_anchors_preset(Control.PRESET_FULL_RECT)
+	Input.set_mouse_mode(Input.MOUSE_MODE_VISIBLE)  # курсор виден в меню
 	_sync_order()
 	_build()
 	_refresh()

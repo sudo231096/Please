@@ -313,6 +313,7 @@ func _vertex_color_material() -> StandardMaterial3D:
 	m.vertex_color_use_as_albedo = true
 	m.albedo_color = Color.WHITE
 	m.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	m.transparency = BaseMaterial3D.TRANSPARENCY_DISABLED  # строго непрозрачный
 	m.cull_mode = BaseMaterial3D.CULL_DISABLED  # двухсторонний рендер (фикс «прозрачности»)
 	return m
 
@@ -323,6 +324,7 @@ func _grass_material() -> StandardMaterial3D:
 	m.vertex_color_use_as_albedo = true
 	m.albedo_color = Color(0.4, 0.7, 0.3)
 	m.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	m.transparency = BaseMaterial3D.TRANSPARENCY_DISABLED  # строго непрозрачный
 	m.cull_mode = BaseMaterial3D.CULL_DISABLED
 	return m
 
@@ -334,6 +336,7 @@ func _terrain_material() -> StandardMaterial3D:
 	m.albedo_color = Color.WHITE
 	m.roughness = 1.0
 	m.metallic = 0.0
+	m.transparency = BaseMaterial3D.TRANSPARENCY_DISABLED  # строго непрозрачный
 	m.cull_mode = BaseMaterial3D.CULL_DISABLED
 	return m
 
@@ -518,6 +521,7 @@ func _build_ground() -> void:
 	_terrain_model.scale = Vector3(1024.0, 1024.0, 40.0)
 	_terrain_model.position = Vector3(-512.0, -2.0, 512.0)
 	add_child(_terrain_model)
+	_force_opaque(_terrain_model)
 
 	# страховочная коллизия внизу
 	var g := StaticBody3D.new()
@@ -960,7 +964,21 @@ func _add_monument_model(path: String, x: float, z: float) -> Node3D:
 	var y := _surface_height(x, z)
 	model.position = Vector3(x, y, z)
 	add_child(model)
+	_force_opaque(model)
 	return model
+
+
+# гарантируем непрозрачность и двухсторонний рендер скачанных моделей
+# (защита от «прозрачной карты» из-за обратной намотки граней/альфы)
+func _force_opaque(model: Node3D) -> void:
+	for mi in model.find_children("*", "MeshInstance3D", true, false):
+		for s in range(mi.mesh.get_surface_count()):
+			var mat: Material = mi.get_active_material(s)
+			if mat is BaseMaterial3D:
+				var m: BaseMaterial3D = mat.duplicate()
+				m.transparency = BaseMaterial3D.TRANSPARENCY_DISABLED
+				m.cull_mode = BaseMaterial3D.CULL_DISABLED
+				mi.set_surface_override_material(s, m)
 
 
 func _build_warehouse(x: float, z: float) -> void:
@@ -1065,16 +1083,19 @@ func _build_npp(x: float, z: float) -> void:
 func _spawn_player() -> void:
 	_player = CharacterBody3D.new()
 	_player.set_script(PlayerScr)
+	var fresh := not (GameState.return_to_pos and GameState.last_pos != Vector3.ZERO)
 	var pos: Vector3
-	if GameState.return_to_pos and GameState.last_pos != Vector3.ZERO:
+	if not fresh:
 		pos = GameState.last_pos
 		GameState.return_to_pos = false
 	else:
 		pos = _random_spot(20.0)
 	_player.position = Vector3(pos.x, pos.y + 1.0, pos.z)
 	add_child(_player)
-	# гарантируем ресурсы рядом со спавном (чтобы сразу было что добывать)
-	_spawn_guaranteed_resources(pos)
+	# гарантируем ресурсы рядом со спавном ТОЛЬКО при свежем старте
+	# (иначе при каждом возврате из инвентаря/карты плодятся дубликаты)
+	if fresh:
+		_spawn_guaranteed_resources(pos)
 
 
 func _spawn_guaranteed_resources(center: Vector3) -> void:
