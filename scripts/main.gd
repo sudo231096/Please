@@ -375,6 +375,14 @@ func _build_sky() -> void:
 	env.fog_light_color = Color(0.62, 0.72, 0.84)
 	env.fog_density = 0.0014
 	env.fog_sky_affect = 0.55
+	# SSAO — затенение в углублениях и у оснований объектов (глубина, как в Rust)
+	env.ssao_enabled = true
+	env.ssao_radius = 1.2
+	env.ssao_intensity = 1.3
+	env.ssao_power = 2.0
+	env.ssao_detail = 0.5
+	env.ssao_horizon = 0.06
+	env.ssao_sharpness = 0.98
 	var we := WorldEnvironment.new()
 	we.environment = env
 	add_child(we)
@@ -384,8 +392,10 @@ func _build_sky() -> void:
 	sun.light_color = Color(1.0, 0.93, 0.8)  # тёплый солнечный свет
 	sun.light_energy = 1.5
 	sun.shadow_enabled = true
-	sun.directional_shadow_max_distance = 130.0
+	sun.directional_shadow_mode = DirectionalLight3D.SHADOW_PARALLEL_4_SPLITS
+	sun.directional_shadow_max_distance = 150.0
 	sun.directional_shadow_blend_splits = true
+	sun.shadow_normal_bias = 1.2
 	add_child(sun)
 	# видимое солнце в небе (яркий светящийся диск + мягкое гало)
 	var disc := MeshInstance3D.new()
