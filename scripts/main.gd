@@ -159,8 +159,8 @@ func _make_tree_mesh() -> ArrayMesh:
 	var verts := PackedVector3Array()
 	var cols := PackedColorArray()
 	var idx := PackedInt32Array()
-	var brown := Color(0.42, 0.3, 0.16)
-	var green := Color(0.16, 0.38, 0.14)
+	var brown := Color(0.45, 0.32, 0.17)
+	var green := Color(0.22, 0.46, 0.16)
 	# ствол (коробка)
 	var bs := Vector3(0.16, 1.1, 0.16)
 	var bc := Vector3(0, 0.55, 0)
@@ -267,7 +267,7 @@ func _make_rock_mesh() -> ArrayMesh:
 		var cy := s if (i & 2) != 0 else -s
 		var cz := s if (i & 4) != 0 else -s
 		p.append(Vector3(cx + r.randf_range(-0.15, 0.15), cy + r.randf_range(-0.15, 0.15), cz + r.randf_range(-0.15, 0.15)))
-	var gray := Color(0.42, 0.42, 0.45)
+	var gray := Color(0.5, 0.48, 0.46)
 	var base := verts.size()
 	verts.append_array(p)
 	for i in range(8):
@@ -350,27 +350,41 @@ func _build_sky() -> void:
 	env.background_mode = Environment.BG_SKY
 	var sky := Sky.new()
 	var skymat := ProceduralSkyMaterial.new()
-	skymat.sky_top_color = Color(0.3, 0.55, 0.9)
-	skymat.sky_horizon_color = Color(0.7, 0.8, 0.9)
-	skymat.ground_bottom_color = Color(0.3, 0.25, 0.2)
-	skymat.ground_horizon_color = Color(0.6, 0.6, 0.55)
+	# яркое дневное небо с лёгкой дымкой — как в Rust
+	skymat.sky_top_color = Color(0.25, 0.48, 0.82)
+	skymat.sky_horizon_color = Color(0.74, 0.82, 0.9)
+	skymat.ground_bottom_color = Color(0.3, 0.27, 0.22)
+	skymat.ground_horizon_color = Color(0.62, 0.62, 0.56)
 	sky.sky_material = skymat
 	env.sky = sky
 	env.ambient_light_source = Environment.AMBIENT_SOURCE_SKY
 	env.ambient_light_energy = 1.0
+	# кинематографичная цветокоррекция: фильмический тонмаппинг + лёгкий bloom
+	env.tonemap_mode = Environment.TONE_MAPPER_FILMIC
+	env.tonemap_exposure = 1.05
+	env.glow_enabled = true
+	env.glow_intensity = 0.4
+	env.glow_bloom = 0.12
+	env.glow_hdr_threshold = 1.0
+	# лёгкая подкрутка насыщенности и контраста
+	env.adjustment_enabled = true
+	env.adjustment_saturation = 0.95
+	env.adjustment_contrast = 1.04
+	# атмосферная дымка на дальности
 	env.fog_enabled = true
-	env.fog_light_color = Color(0.6, 0.7, 0.8)
-	env.fog_density = 0.0015
-	env.fog_sky_affect = 0.35
+	env.fog_light_color = Color(0.62, 0.72, 0.84)
+	env.fog_density = 0.0014
+	env.fog_sky_affect = 0.55
 	var we := WorldEnvironment.new()
 	we.environment = env
 	add_child(we)
 
 	var sun := DirectionalLight3D.new()
-	sun.rotation_degrees = Vector3(-45, 35, 0)
+	sun.rotation_degrees = Vector3(-42, 32, 0)
+	sun.light_color = Color(1.0, 0.93, 0.8)  # тёплый солнечный свет
 	sun.light_energy = 1.5
 	sun.shadow_enabled = true
-	sun.directional_shadow_max_distance = 120.0
+	sun.directional_shadow_max_distance = 130.0
 	sun.directional_shadow_blend_splits = true
 	add_child(sun)
 	# видимое солнце в небе (яркий светящийся диск + мягкое гало)
@@ -393,6 +407,13 @@ func _build_sky() -> void:
 	add_child(halo)
 
 
+func _color_noise(x: float, z: float) -> float:
+	# детерминированный шум 0..1 — для естественной пятнистости рельефа
+	var n := sin(x * 0.09 + 1.7) * cos(z * 0.11 + 0.6)
+	var n2 := sin(x * 0.21 + 0.4) * sin(z * 0.19 + 2.1)
+	return clampf(0.5 + 0.35 * n + 0.15 * n2, 0.0, 1.0)
+
+
 func _build_ground() -> void:
 	var n := TERRAIN_N + 1
 	_heights.resize(n * n)
@@ -406,10 +427,11 @@ func _build_ground() -> void:
 	var norms := PackedVector3Array()
 	var cols := PackedColorArray()
 	var idx := PackedInt32Array()
-	var grass := Color(0.24, 0.46, 0.18)
-	var dark := Color(0.19, 0.36, 0.14)
-	var rock := Color(0.42, 0.42, 0.45)
-	var snow := Color(0.92, 0.94, 0.97)
+	var grass := Color(0.32, 0.48, 0.2)
+	var dark := Color(0.2, 0.37, 0.15)
+	var dirt := Color(0.45, 0.37, 0.24)
+	var rock := Color(0.4, 0.4, 0.44)
+	var snow := Color(0.93, 0.95, 0.98)
 	for z in range(n):
 		for x in range(n):
 			var wx := -HALF + x * TERRAIN_CELL
@@ -439,11 +461,16 @@ func _build_ground() -> void:
 				c = grass
 			else:
 				c = dark
+			# земляные проплешины в низинах (как в Rust)
+			if h < 2.5 and pf <= 0.12:
+				c = c.lerp(dirt, _color_noise(wx, wz) * 0.5)
 			# крутые склоны переходят в скалу (как в Rust)
-			if slope > 0.30 and pf <= 0.12:
-				c = c.lerp(rock, clampf((slope - 0.30) / 0.40, 0.0, 1.0))
-			# лёгкая вариация тона, чтобы не было однородного «мыла»
-			cols.append(c.lightened(_rng.randf_range(-0.05, 0.05)))
+			if slope > 0.28 and pf <= 0.12:
+				c = c.lerp(rock, clampf((slope - 0.28) / 0.45, 0.0, 1.0))
+			# естественная пятнистость тона (вместо однородной заливки)
+			var v := _color_noise(wx * 1.7, wz * 1.7 + 9.0)
+			c = c.lightened((v - 0.5) * 0.14)
+			cols.append(c)
 	for z in range(TERRAIN_N):
 		for x in range(TERRAIN_N):
 			var i0 := z * n + x
