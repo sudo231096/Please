@@ -275,8 +275,8 @@ func _build() -> void:
 	crouch.anchor_bottom = 1.0
 	crouch.offset_left = -180 if on_right else 170
 	crouch.offset_right = -30 if on_right else 320
-	crouch.offset_top = -430
-	crouch.offset_bottom = -330
+	crouch.offset_top = -290
+	crouch.offset_bottom = -200
 	crouch.add_theme_font_size_override("font_size", 20)
 	crouch.button_down.connect(func() -> void: _player.set_meta("mob_crouch", true))
 	crouch.button_up.connect(func() -> void: _player.set_meta("mob_crouch", false))

@@ -433,8 +433,8 @@ func _build_ground() -> void:
 	# скачанная текстурированная карта (worldmachine) — большая и детальная
 	_terrain_model = load("res://models/monument_terrain.glb").instantiate()
 	_terrain_model.rotation_degrees = Vector3(-90, 0, 0)
-	_terrain_model.scale = Vector3(1024.0, 1024.0, 100.0)
-	_terrain_model.position = Vector3(-512.0, -5.0, 512.0)
+	_terrain_model.scale = Vector3(1024.0, 1024.0, 40.0)
+	_terrain_model.position = Vector3(-512.0, -2.0, 512.0)
 	add_child(_terrain_model)
 
 	# страховочная коллизия внизу
@@ -848,36 +848,78 @@ func _build_warehouse(x: float, z: float) -> void:
 
 
 func _build_parking(x: float, z: float) -> void:
+	# промышленная парковка: потёртый бетон, стёртая разметка, ржавые машины
 	var y := _surface_height(x, z)
 	var base := Node3D.new()
 	base.position = Vector3(x, y, z)
 	add_child(base)
-	_box_at(Vector3(0, -0.05, 0), Vector3(40, 0.2, 40), Color(0.22, 0.22, 0.24), base)
-	for i in range(8):
-		_box_at(Vector3(-18 + i * 5.0, 0.06, 0), Vector3(0.15, 0.02, 20), Color(0.9, 0.85, 0.4), base)
-	_box_at(Vector3(-6, 0.5, -8), Vector3(2.0, 1.2, 4.2), Color(0.7, 0.2, 0.2), base)
-	_box_at(Vector3(6, 0.5, 8), Vector3(2.0, 1.2, 4.2), Color(0.2, 0.4, 0.7), base)
-	_box_at(Vector3(6, 0.5, -6), Vector3(2.0, 1.2, 4.2), Color(0.25, 0.6, 0.3), base)
+	# потёртая бетонная площадка
+	_box_at(Vector3(0, -0.05, 0), Vector3(42, 0.2, 42), Color(0.3, 0.3, 0.31), base)
+	# стёртая жёлтая разметка (потрескавшаяся — куски с пропусками)
+	for i in range(9):
+		if i % 3 != 0:
+			_box_at(Vector3(-19 + i * 4.7, 0.06, 0), Vector3(0.12, 0.02, 22), Color(0.72, 0.66, 0.32), base)
+	# бетонные бордюры по краям
+	_box_at(Vector3(-21, 0.3, 0), Vector3(0.5, 0.6, 42), Color(0.4, 0.4, 0.42), base)
+	_box_at(Vector3(21, 0.3, 0), Vector3(0.5, 0.6, 42), Color(0.4, 0.4, 0.42), base)
+	# ржавые брошенные машины (облезлый кузов)
+	_car(Vector3(-7, 0, -8), Color(0.5, 0.22, 0.16), base)
+	_car(Vector3(7, 0, 8), Color(0.3, 0.34, 0.38), base)
+	_car(Vector3(7, 0, -6), Color(0.4, 0.3, 0.2), base)
+	# ржавые бочки-ограждение
+	_cyl_at(Vector3(-19, 0, -19), 0.5, 1.0, Color(0.5, 0.28, 0.16), base)
+	_cyl_at(Vector3(19, 0, 19), 0.5, 1.0, Color(0.5, 0.28, 0.16), base)
 	_add_lootbox(x + 8, z + 8)
 	_add_lootbox(x - 8, z - 8)
 	_add_lootbox(x + 10, z - 6)
 
 
+func _car(pos: Vector3, color: Color, parent: Node3D) -> void:
+	# простой ржавый легковой автомобиль
+	var body := MeshInstance3D.new()
+	var bm := BoxMesh.new()
+	bm.size = Vector3(1.8, 0.6, 4.0)
+	body.mesh = bm
+	body.material_override = _mat(color)
+	body.position = pos + Vector3(0, 0.55, 0)
+	parent.add_child(body)
+	var cab := MeshInstance3D.new()
+	var cm := BoxMesh.new()
+	cm.size = Vector3(1.6, 0.5, 1.8)
+	cab.mesh = cm
+	cab.material_override = _mat(color.darkened(0.25))
+	cab.position = pos + Vector3(0, 1.05, -0.2)
+	parent.add_child(cab)
+	# колёса
+	for wx in [-0.75, 0.75]:
+		for wz in [-1.3, 1.3]:
+			_cyl_at(pos + Vector3(wx, 0, wz), 0.32, 0.3, Color(0.12, 0.12, 0.12), parent)
+
+
 func _build_factory(x: float, z: float) -> void:
+	# заброшенный промышленный завод: бетон, ржавый металл, трубы, технические здания
 	var y := _surface_height(x, z)
 	var base := Node3D.new()
 	base.position = Vector3(x, y, z)
 	add_child(base)
-	var wall := Color(0.45, 0.44, 0.42)
-	_box_at(Vector3(0, 0, 10), Vector3(30, 9, 0.4), wall, base)
-	_box_at(Vector3(0, 0, -10), Vector3(30, 9, 0.4), wall, base)
-	_box_at(Vector3(-15, 0, 0), Vector3(0.4, 9, 20), wall, base)
-	_box_at(Vector3(15, 0, 0), Vector3(0.4, 9, 20), wall, base)
-	_box_at(Vector3(0, 9, 0), Vector3(30.6, 0.4, 20.6), Color(0.28, 0.28, 0.3), base)
-	_cyl_at(Vector3(-8, 0, 0), 1.0, 14.0, Color(0.4, 0.4, 0.42), base)
-	_cyl_at(Vector3(8, 0, 0), 1.0, 14.0, Color(0.4, 0.4, 0.42), base)
-	_sphere_at(Vector3(-8, 15.5, 0), 1.6, 1.6, Color(0.7, 0.7, 0.72), base)
-	_sphere_at(Vector3(8, 15.5, 0), 1.6, 1.6, Color(0.7, 0.7, 0.72), base)
+	var concrete := Color(0.42, 0.4, 0.38)
+	var rust := Color(0.42, 0.26, 0.16)
+	var steel := Color(0.35, 0.35, 0.37)
+	# главный цех (бетон + ржавая крыша)
+	_box_at(Vector3(0, 0, 0), Vector3(28, 8, 20), concrete, base)
+	_box_at(Vector3(0, 8, 0), Vector3(29, 0.5, 21), rust, base)
+	# техническая пристройка
+	_box_at(Vector3(16, 0, 0), Vector3(10, 5, 12), concrete, base)
+	# трубы с клапанами
+	_cyl_at(Vector3(-10, 0, 0), 0.9, 13.0, rust, base)
+	_cyl_at(Vector3(11, 0, 0), 0.9, 13.0, rust, base)
+	_cyl_at(Vector3(-10, 0, 6), 0.5, 9.0, steel, base)
+	_cyl_at(Vector3(11, 0, 6), 0.5, 9.0, steel, base)
+	# дымовые сферы на трубах (ржавые)
+	_sphere_at(Vector3(-10, 14.5, 0), 1.5, 1.5, rust, base)
+	_sphere_at(Vector3(11, 14.5, 0), 1.5, 1.5, rust, base)
+	# ржавые ворота
+	_box_at(Vector3(0, 0, 10.2), Vector3(5, 4, 0.3), Color(0.35, 0.24, 0.15), base)
 	_add_lootbox(x + 4, z + 4)
 	_add_lootbox(x - 4, z - 4)
 	_add_lootbox(x + 6, z - 3)

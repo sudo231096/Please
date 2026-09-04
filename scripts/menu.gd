@@ -119,36 +119,12 @@ func _build_world() -> void:
 
 
 func _build_player_model() -> void:
-	# качественная скачанная модель игрока (риг + анимации)
-	var model: Node3D = preload("res://models/player.glb").instantiate()
+	# человек в трусах (стартовый персонаж как в Rust)
+	var model: Node3D = preload("res://scripts/human_model.gd").new()
 	add_child(model)
-	# модель ~47 юнитов ростом -> подгоняем под ~1.9 м
-	model.scale = Vector3.ONE * (1.9 / 47.0)
+	model.build()
 	model.rotation_degrees = Vector3(0, 180, 0)  # лицом к камере
-
-	# проиграть idle-анимацию, если есть
-	for ap in model.find_children("*", "AnimationPlayer", true, false):
-		if ap.has_animation("Idle"):
-			ap.play("Idle")
-		elif ap.has_animation("Action"):
-			ap.play("Action")
-
-	# поставить на землю по габаритам
-	await get_tree().process_frame
-	await get_tree().process_frame
-	var mn := Vector3(1e9, 1e9, 1e9)
-	for m in model.find_children("*", "MeshInstance3D", true, false):
-		var aabb: AABB = m.mesh.get_aabb()
-		var t: Transform3D = m.global_transform
-		for i in range(8):
-			var p: Vector3 = aabb.position + Vector3(
-				aabb.size.x if (i & 1) != 0 else 0.0,
-				aabb.size.y if (i & 2) != 0 else 0.0,
-				aabb.size.z if (i & 4) != 0 else 0.0)
-			p = t * p
-			mn = mn.min(p)
-	model.position += Vector3(0, -mn.y, 0)
-	model.position.z = -3.0
+	model.position = Vector3(0, 0, -3.0)
 
 
 func _build_ui() -> void:
