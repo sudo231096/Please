@@ -68,6 +68,11 @@ const RECIPES := {
 	"door": {"name": "Деревянная дверь", "cost": {"wood": 100}, "type": "build", "cat": "Строительство", "tech": "masonry", "time": 3.0},
 	"workbench": {"name": "Верстак", "cost": {"wood": 200, "stone": 100}, "type": "build", "cat": "Строительство", "tech": "", "time": 8.0},
 	"bag": {"name": "Спальник", "cost": {"cloth": 25}, "type": "build", "cat": "Строительство", "tech": "metallurgy", "time": 4.0},
+	"cloth_shirt": {"name": "Тканевая рубаха", "cost": {"cloth": 20}, "type": "clothing", "cat": "Одежда", "tech": "", "time": 3.0},
+	"cloth_pants": {"name": "Тканевые штаны", "cost": {"cloth": 15}, "type": "clothing", "cat": "Одежда", "tech": "", "time": 3.0},
+	"boots": {"name": "Сапоги", "cost": {"cloth": 10}, "type": "clothing", "cat": "Одежда", "tech": "", "time": 2.0},
+	"headband": {"name": "Повязка", "cost": {"cloth": 5}, "type": "clothing", "cat": "Одежда", "tech": "", "time": 1.5},
+	"bone_armor": {"name": "Костяная броня", "cost": {"cloth": 20, "metal": 10}, "type": "clothing", "cat": "Броня", "tech": "", "time": 6.0},
 }
 
 var built := {"campfire": 0, "furnace": 0, "wall": 0, "floor": 0, "door": 0, "bag": 0, "workbench": 0}
@@ -80,15 +85,44 @@ var _crafting: Array = []
 var pending_build := ""  # постройка, завершившая крафт — войти в режим строительства
 
 
-# предметы hotbar
-const HOTBAR := [
-	["wood", "Дерево", false],
-	["stone", "Камень", false],
-	["sulfur", "Сера", false],
-	["iron", "Железо", false],
-	["meat", "Мясо", true],
-	["scrap", "Скрап", false],
-]
+# --- БАЗА ПРЕДМЕТОВ (собственные названия/иконки/описания — НЕ копия Oxide) ---
+# kind: resource/инструмент/оружие/боеприпас/медицина/одежда/броня
+const ITEMS := {
+	"wood": {"name": "Дерево", "icon": "wood", "stack": 9999, "cat": "Ресурсы", "desc": "Базовый материал для строительства и крафта."},
+	"stone": {"name": "Камень", "icon": "stone", "stack": 9999, "cat": "Ресурсы", "desc": "Нужен для инструментов и построек."},
+	"sulfur": {"name": "Сера", "icon": "sulfur", "stack": 9999, "cat": "Ресурсы", "desc": "Полезный ресурс для будущих рецептов."},
+	"iron": {"name": "Железо", "icon": "iron", "stack": 9999, "cat": "Ресурсы", "desc": "Руда для металла."},
+	"cloth": {"name": "Ткань", "icon": "cloth", "stack": 9999, "cat": "Ресурсы", "desc": "Для одежды и бинтов."},
+	"metal": {"name": "Металл", "icon": "metal", "stack": 9999, "cat": "Ресурсы", "desc": "Прочный металл для брони и построек."},
+	"scrap": {"name": "Скрап", "icon": "scrap", "stack": 9999, "cat": "Ресурсы", "desc": "Валюта изучения технологий."},
+	"meat": {"name": "Мясо", "icon": "meat", "stack": 50, "cat": "Еда", "desc": "Восстанавливает голод. Съешь через хотбар."},
+	"water": {"name": "Вода", "icon": "water", "stack": 50, "cat": "Еда", "desc": "Утоляет жажду."},
+	"hatchet": {"name": "Каменный топор", "icon": "hatchet", "stack": 1, "cat": "Инструменты", "desc": "Добыча дерева в 2 раза быстрее."},
+	"pickaxe": {"name": "Каменная кирка", "icon": "pickaxe", "stack": 1, "cat": "Инструменты", "desc": "Добыча камня и руды в 2 раза быстрее."},
+	"torch": {"name": "Факел", "icon": "campfire", "stack": 1, "cat": "Инструменты", "desc": "Простой источник света."},
+	"spear": {"name": "Копьё", "icon": "spear", "stack": 1, "cat": "Оружие", "desc": "+50% к урону в ближнем бою."},
+	"bow": {"name": "Лук", "icon": "bow", "stack": 1, "cat": "Оружие", "desc": "+25% к урону."},
+	"arrow": {"name": "Стрела", "icon": "spear", "stack": 64, "cat": "Боеприпасы", "desc": "Боеприпас для лука."},
+	"bandage": {"name": "Бинт", "icon": "cloth", "stack": 10, "cat": "Медицина", "desc": "Восстанавливает 30 здоровья."},
+	"cloth_shirt": {"name": "Тканевая рубаха", "icon": "cloth", "stack": 1, "cat": "Одежда", "slot": "chest", "desc": "Лёгкая рубаха из ткани."},
+	"cloth_pants": {"name": "Тканевые штаны", "icon": "cloth", "stack": 1, "cat": "Одежда", "slot": "legs", "desc": "Простые штаны."},
+	"boots": {"name": "Сапоги", "icon": "cloth", "stack": 1, "cat": "Одежда", "slot": "feet", "desc": "Прочная обувь."},
+	"headband": {"name": "Повязка", "icon": "cloth", "stack": 1, "cat": "Одежда", "slot": "head", "desc": "Головная повязка."},
+	"bone_armor": {"name": "Костяная броня", "icon": "metal", "stack": 1, "cat": "Броня", "slot": "chest", "desc": "Защищает грудь от урона."},
+}
+
+const EQUIP_SLOTS := ["head", "chest", "legs", "feet"]
+
+# дискретные предметы (всё кроме ресурсов) — id -> кол-во
+var items := {}
+# надетое снаряжение: слот -> id предмета
+var equipped := {}
+# хотбар: 6 слотов с id предметов (или "")
+var hotbar: Array = ["wood", "stone", "sulfur", "iron", "meat", "scrap"]
+# предмет «в руке» при перетаскивании: {id, count} или {}
+var held := {}
+# выбранный слот хотбара для назначения (в инвентаре)
+var assigning_hotbar := -1
 
 
 func _ready() -> void:
@@ -132,6 +166,11 @@ func reset_run() -> void:
 	has_spear = false
 	has_torch = false
 	workbench_built = false
+	items.clear()
+	equipped.clear()
+	hotbar = ["wood", "stone", "sulfur", "iron", "meat", "scrap"]
+	held = {}
+	assigning_hotbar = -1
 	learned_techs.clear()
 	for k in built:
 		built[k] = 0
@@ -163,25 +202,194 @@ func drink() -> void:
 
 
 func hotbar_count(slot: int) -> int:
-	var key: String = HOTBAR[slot][0]
-	match key:
-		"wood": return wood
-		"stone": return stone
-		"sulfur": return sulfur
-		"iron": return iron
-		"meat": return meat
-		"scrap": return scrap
-	return 0
+	if slot < 0 or slot >= hotbar.size():
+		return 0
+	var key: String = hotbar[slot]
+	if key == "":
+		return 0
+	return count(key)
 
 
 func use_slot(slot: int) -> String:
-	var key: String = HOTBAR[slot][0]
+	if slot < 0 or slot >= hotbar.size():
+		return ""
+	var key: String = hotbar[slot]
+	if key == "":
+		return ""
 	if key == "meat":
 		if meat > 0:
 			eat()
 			return "Съел мясо"
 		return "Нет мяса"
+	elif key == "water":
+		if water > 0:
+			drink()
+			return "Выпил воды"
+		return "Нет воды"
+	elif key == "bandage":
+		if count("bandage") > 0:
+			remove_item("bandage", 1)
+			hp = minf(max_hp, hp + 30.0)
+			return "Перевязал раны"
+		return "Нет бинтов"
 	return ""
+
+
+# --- предметы и инвентарь ---
+
+func count(id: String) -> int:
+	match id:
+		"wood": return wood
+		"stone": return stone
+		"sulfur": return sulfur
+		"iron": return iron
+		"cloth": return cloth
+		"metal": return metal
+		"scrap": return scrap
+		"meat": return meat
+		"water": return water
+		_: return int(items.get(id, 0))
+
+
+func item_name(id: String) -> String:
+	return ITEMS[id]["name"] if ITEMS.has(id) else id
+
+
+func item_icon(id: String) -> String:
+	return ITEMS[id]["icon"] if ITEMS.has(id) else "wood"
+
+
+func item_desc(id: String) -> String:
+	return ITEMS[id]["desc"] if ITEMS.has(id) else ""
+
+
+func item_stack(id: String) -> int:
+	return ITEMS[id]["stack"] if ITEMS.has(id) else 1
+
+
+func item_cat(id: String) -> String:
+	return ITEMS[id]["cat"] if ITEMS.has(id) else ""
+
+
+func is_resource(id: String) -> bool:
+	return id in ["wood", "stone", "sulfur", "iron", "cloth", "metal", "scrap", "meat", "water"]
+
+
+func add_item(id: String, n: int) -> void:
+	if is_resource(id):
+		add_resource(id, n)
+	else:
+		items[id] = int(items.get(id, 0)) + n
+	_sync_tools()
+
+
+func remove_item(id: String, n: int) -> bool:
+	if count(id) < n:
+		return false
+	if is_resource(id):
+		take_resource(id, n)
+	else:
+		items[id] = int(items.get(id, 0)) - n
+		if items[id] <= 0:
+			items.erase(id)
+	_sync_tools()
+	return true
+
+
+# держать флаги инструментов в согласии с предметами инвентаря
+func _sync_tools() -> void:
+	has_hatchet = items.has("hatchet")
+	has_pickaxe = items.has("pickaxe")
+	has_bow = items.has("bow")
+	has_spear = items.has("spear")
+	has_torch = items.has("torch")
+	arrows = int(items.get("arrow", 0))
+
+
+func can_stack(id: String, cur: int, add: int) -> bool:
+	return cur + add <= item_stack(id)
+
+
+# экипировать предмет из инвентаря в слот
+func equip_item(id: String) -> bool:
+	var slot: String = ITEMS[id].get("slot", "")
+	if slot == "":
+		return false
+	if count(id) <= 0:
+		return false
+	# вернуть старый предмет слота обратно в инвентарь
+	if equipped.has(slot):
+		add_item(equipped[slot], 1)
+	remove_item(id, 1)
+	equipped[slot] = id
+	return true
+
+
+# снять предмет со слота обратно в инвентарь
+func unequip(slot: String) -> void:
+	if equipped.has(slot):
+		add_item(equipped[slot], 1)
+		equipped.erase(slot)
+
+
+# слот экипировки для предмета (если это одежда/броня)
+func equip_slot_of(id: String) -> String:
+	return ITEMS[id].get("slot", "") if ITEMS.has(id) else ""
+
+
+# надет ли предмет с заданным id
+func is_equipped(id: String) -> bool:
+	return equipped.values().has(id)
+
+
+# --- сохранение инвентаря ---
+
+func save_inventory() -> void:
+	var cfg := ConfigFile.new()
+	cfg.load(SAVE_PATH)
+	cfg.set_value("res", "wood", wood)
+	cfg.set_value("res", "stone", stone)
+	cfg.set_value("res", "sulfur", sulfur)
+	cfg.set_value("res", "iron", iron)
+	cfg.set_value("res", "cloth", cloth)
+	cfg.set_value("res", "metal", metal)
+	cfg.set_value("res", "scrap", scrap)
+	cfg.set_value("res", "meat", meat)
+	cfg.set_value("res", "water", water)
+	cfg.set_value("inv", "items", items)
+	cfg.set_value("inv", "equipped", equipped)
+	cfg.set_value("inv", "hotbar", hotbar)
+	cfg.save(SAVE_PATH)
+
+
+func load_inventory() -> bool:
+	var cfg := ConfigFile.new()
+	if cfg.load(SAVE_PATH) != OK:
+		return false
+	if not cfg.has_section("inv"):
+		return false
+	wood = int(cfg.get_value("res", "wood", wood))
+	stone = int(cfg.get_value("res", "stone", stone))
+	sulfur = int(cfg.get_value("res", "sulfur", sulfur))
+	iron = int(cfg.get_value("res", "iron", iron))
+	cloth = int(cfg.get_value("res", "cloth", cloth))
+	metal = int(cfg.get_value("res", "metal", metal))
+	scrap = int(cfg.get_value("res", "scrap", scrap))
+	meat = int(cfg.get_value("res", "meat", meat))
+	water = int(cfg.get_value("res", "water", water))
+	items = cfg.get_value("inv", "items", {})
+	equipped = cfg.get_value("inv", "equipped", {})
+	var hb = cfg.get_value("inv", "hotbar", hotbar)
+	if hb is Array and hb.size() == 6:
+		hotbar = hb
+	# синхронизировать флаги инструментов с предметами
+	has_hatchet = items.has("hatchet")
+	has_pickaxe = items.has("pickaxe")
+	has_bow = items.has("bow")
+	has_spear = items.has("spear")
+	has_torch = items.has("torch")
+	arrows = int(items.get("arrow", 0))
+	return true
 
 
 func begin_build(kind: String) -> void:
@@ -343,18 +551,45 @@ func tick_craft(delta: float) -> void:
 
 func _finish_craft(id: String) -> void:
 	match id:
-		"hatchet": has_hatchet = true
-		"pickaxe": has_pickaxe = true
-		"bow": has_bow = true
-		"spear": has_spear = true
-		"torch": has_torch = true
-		"arrow": arrows += 5
-		"bandage": hp = minf(max_hp, hp + 30.0)
+		"hatchet":
+			items["hatchet"] = int(items.get("hatchet", 0)) + 1
+			has_hatchet = true
+		"pickaxe":
+			items["pickaxe"] = int(items.get("pickaxe", 0)) + 1
+			has_pickaxe = true
+		"bow":
+			items["bow"] = int(items.get("bow", 0)) + 1
+			has_bow = true
+		"spear":
+			items["spear"] = int(items.get("spear", 0)) + 1
+			has_spear = true
+		"torch":
+			items["torch"] = int(items.get("torch", 0)) + 1
+			has_torch = true
+		"arrow":
+			items["arrow"] = int(items.get("arrow", 0)) + 5
+			arrows += 5
+		"bandage":
+			items["bandage"] = int(items.get("bandage", 0)) + 1
+		"cloth_shirt", "cloth_pants", "boots", "headband", "bone_armor":
+			items[id] = int(items.get(id, 0)) + 1
 		"workbench": workbench_built = true
 		_:
 			if RECIPES[id]["type"] == "build":
 				built[id] = built.get(id, 0) + 1
 				pending_build = id
+
+
+# отменить крафт в очереди (вернуть ресурсы)
+func cancel_craft(index: int) -> bool:
+	if index < 0 or index >= _crafting.size():
+		return false
+	var c: Dictionary = _crafting[index]
+	var cost: Dictionary = RECIPES[c["id"]]["cost"]
+	for r in cost:
+		add_resource(r, cost[r])
+	_crafting.remove_at(index)
+	return true
 
 
 func crafting_queue() -> Array:

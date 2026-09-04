@@ -17,6 +17,10 @@ var _study: Control
 var _study_list: VBoxContainer
 var _study_btn: Button
 var _toast: Label
+var _craft_search: LineEdit
+var _craft_qty: SpinBox
+var _craft_cat: String = ""
+var _craft_selected: String = ""
 
 
 func bind(p: Node3D) -> void:
@@ -445,12 +449,16 @@ func refresh() -> void:
 	# слоты hotbar (6): название + количество, подсветка активного
 	for i in range(6):
 		var slot: Button = _slots[i]
-		var name: String = GameState.HOTBAR[i][1]
-		var count: int = GameState.hotbar_count(i)
-		if count > 0:
-			slot.text = "%s\nx%d" % [name, count]
+		var key: String = GameState.hotbar[i]
+		if key == "":
+			slot.text = ""
 		else:
-			slot.text = name
+			var name: String = GameState.item_name(key)
+			var count: int = GameState.hotbar_count(i)
+			if count > 0:
+				slot.text = "%s\nx%d" % [name, count]
+			else:
+				slot.text = name
 		# подсветка активного слота
 		if i == GameState.selected_slot:
 			slot.modulate = Color(1.0, 1.0, 0.55)
@@ -464,7 +472,7 @@ func _build_craft_menu() -> void:
 	_craft.visible = false
 	add_child(_craft)
 	var dim := ColorRect.new()
-	dim.color = Color(0, 0, 0, 0.65)
+	dim.color = Color(0, 0, 0, 0.7)
 	dim.set_anchors_preset(Control.PRESET_FULL_RECT)
 	_craft.add_child(dim)
 
@@ -473,10 +481,10 @@ func _build_craft_menu() -> void:
 	panel.anchor_right = 0.5
 	panel.anchor_top = 0.5
 	panel.anchor_bottom = 0.5
-	panel.offset_left = -300
-	panel.offset_right = 300
-	panel.offset_top = -320
-	panel.offset_bottom = 320
+	panel.offset_left = -340
+	panel.offset_right = 340
+	panel.offset_top = -330
+	panel.offset_bottom = 330
 	_craft.add_child(panel)
 
 	var v := VBoxContainer.new()
@@ -486,28 +494,68 @@ func _build_craft_menu() -> void:
 	var t := Label.new()
 	t.text = "КРАФТ"
 	t.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	t.add_theme_font_size_override("font_size", 30)
+	t.add_theme_font_size_override("font_size", 28)
 	t.modulate = Color(0.8, 0.65, 0.4)
 	v.add_child(t)
 
+	# поиск
+	_craft_search = LineEdit.new()
+	_craft_search.placeholder_text = "Поиск предмета..."
+	_craft_search.add_theme_font_size_override("font_size", 16)
+	_craft_search.text_changed.connect(func(_s: String) -> void: _refresh_craft())
+	v.add_child(_craft_search)
+
 	var res := Label.new()
 	res.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	res.add_theme_font_size_override("font_size", 16)
+	res.add_theme_font_size_override("font_size", 14)
 	res.modulate = Color(0.9, 0.9, 0.85)
 	res.name = "ResLabel"
 	v.add_child(res)
 
-	var sep := HSeparator.new()
-	v.add_child(sep)
+	# категории (кнопки-фильтры)
+	var catrow := HBoxContainer.new()
+	catrow.add_theme_constant_override("separation", 4)
+	v.add_child(catrow)
+	for cat in ["Все", "Инструменты", "Оружие", "Медицина", "Одежда", "Броня", "Строительство"]:
+		var cb := Button.new()
+		cb.text = cat
+		cb.focus_mode = Control.FOCUS_NONE
+		cb.add_theme_font_size_override("font_size", 13)
+		var cname: String = "" if cat == "Все" else cat
+		cb.pressed.connect(func() -> void:
+			_craft_cat = cname
+			_refresh_craft()
+		)
+		catrow.add_child(cb)
+
+	# выбранный рецепт + количество
+	var qrow := HBoxContainer.new()
+	qrow.add_theme_constant_override("separation", 8)
+	v.add_child(qrow)
+	_craft_qty = SpinBox.new()
+	_craft_qty.min_value = 1
+	_craft_qty.max_value = 50
+	_craft_qty.value = 1
+	_craft_qty.custom_minimum_size = Vector2(90, 0)
+	qrow.add_child(_craft_qty)
+	var create := Button.new()
+	create.text = "Создать"
+	create.focus_mode = Control.FOCUS_NONE
+	create.add_theme_font_size_override("font_size", 18)
+	create.modulate = Color(0.6, 0.85, 0.6)
+	create.name = "CreateBtn"
+	create.pressed.connect(_on_create)
+	qrow.add_child(create)
 
 	_craft_list = VBoxContainer.new()
-	_craft_list.add_theme_constant_override("separation", 6)
+	_craft_list.add_theme_constant_override("separation", 4)
+	_craft_list.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	v.add_child(_craft_list)
 
 	var close := Button.new()
 	close.text = "Закрыть"
 	close.focus_mode = Control.FOCUS_NONE
-	close.add_theme_font_size_override("font_size", 20)
+	close.add_theme_font_size_override("font_size", 18)
 	close.pressed.connect(func() -> void: _craft.visible = false)
 	v.add_child(close)
 
@@ -609,54 +657,81 @@ func _refresh_craft() -> void:
 	# строка ресурсов
 	var res_label := _craft.find_child("ResLabel", true, false) as Label
 	if res_label:
-		res_label.text = "Дерево:%d  Камень:%d  Сера:%d  Железо:%d  Ткань:%d  Скрап:%d" % [GameState.wood, GameState.stone, GameState.sulfur, GameState.iron, GameState.cloth, GameState.scrap]
-	# активная очередь крафта
+		res_label.text = "Дерево:%d  Камень:%d  Сера:%d  Железо:%d  Ткань:%d  Металл:%d  Скрап:%d" % [GameState.wood, GameState.stone, GameState.sulfur, GameState.iron, GameState.cloth, GameState.metal, GameState.scrap]
+	# активная очередь крафта (с кнопкой отмены)
 	var queue := GameState.crafting_queue()
-	if not queue.is_empty():
+	for i in range(queue.size()):
+		var c: Dictionary = queue[i]
+		var pct := int((1.0 - c["remaining"] / c["total"]) * 100.0)
+		var row := HBoxContainer.new()
+		_craft_list.add_child(row)
 		var q := Label.new()
-		var parts: Array = []
-		for c in queue:
-			var pct := int((1.0 - c["remaining"] / c["total"]) * 100.0)
-			parts.append("%s %d%%" % [c["name"], pct])
-		q.text = "Изготовление: " + " · ".join(parts)
-		q.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		q.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		q.text = "%s — %d%%" % [c["name"], pct]
 		q.add_theme_font_size_override("font_size", 14)
 		q.modulate = Color(0.9, 0.75, 0.4)
-		_craft_list.add_child(q)
-	# группировка рецептов по категориям
-	var cats: Array = []
+		row.add_child(q)
+		var cancel := Button.new()
+		cancel.text = "✕"
+		cancel.focus_mode = Control.FOCUS_NONE
+		cancel.add_theme_font_size_override("font_size", 14)
+		cancel.modulate = Color(0.95, 0.5, 0.45)
+		var qi: int = i
+		cancel.pressed.connect(func() -> void:
+			GameState.cancel_craft(qi)
+			_refresh_craft()
+			refresh()
+		)
+		row.add_child(cancel)
+	# список рецептов с фильтром по категории и поиску
+	var search: String = _craft_search.text.to_lower() if _craft_search else ""
 	for id in GameState.RECIPES:
 		var rec: Dictionary = GameState.RECIPES[id]
 		var cat: String = rec.get("cat", "Прочее")
-		if not cats.has(cat):
-			cats.append(cat)
-	for cat in cats:
-		var hdr := Label.new()
-		hdr.text = cat
-		hdr.add_theme_font_size_override("font_size", 18)
-		hdr.modulate = Color(0.85, 0.75, 0.5)
-		_craft_list.add_child(hdr)
-		for id in GameState.RECIPES:
-			var rec: Dictionary = GameState.RECIPES[id]
-			if rec.get("cat", "Прочее") != cat:
-				continue
-			var btn := Button.new()
-			btn.focus_mode = Control.FOCUS_NONE
-			btn.add_theme_font_size_override("font_size", 16)
-			var cost_txt := ""
-			for r in rec["cost"]:
-				cost_txt += " %s:%d" % [r, rec["cost"][r]]
-			var t: float = rec.get("time", 0.0)
-			var t_txt := " (%ds)" % int(t) if t > 0.0 else ""
-			btn.text = rec["name"] + "  (" + cost_txt.strip_edges() + ")" + t_txt
-			btn.disabled = not GameState.can_craft(id)
-			var rid: String = id
-			btn.pressed.connect(func() -> void:
-				if GameState.start_craft(rid):
-					_refresh_craft()
-					refresh()
-			)
-			_craft_list.add_child(btn)
+		if _craft_cat != "" and cat != _craft_cat:
+			continue
+		var nm: String = rec["name"]
+		if search != "" and not nm.to_lower().contains(search):
+			continue
+		var btn := Button.new()
+		btn.focus_mode = Control.FOCUS_NONE
+		btn.add_theme_font_size_override("font_size", 15)
+		btn.toggle_mode = true
+		btn.button_pressed = (_craft_selected == id)
+		# стоимость с подсветкой недостающих ресурсов
+		var parts: Array = []
+		for r in rec["cost"]:
+			var need: int = rec["cost"][r]
+			var have: int = GameState.count(r)
+			if have >= need:
+				parts.append("%s %d/%d" % [GameState.item_name(r), need, have])
+			else:
+				parts.append("[НЕ ХВАТАЕТ %s %d/%d]" % [GameState.item_name(r), need, have])
+		var t: float = rec.get("time", 0.0)
+		var t_txt := " · %ds" % int(t) if t > 0.0 else ""
+		btn.text = nm + " — " + ", ".join(parts) + t_txt
+		var rid: String = id
+		btn.pressed.connect(func() -> void:
+			_craft_selected = rid
+			_refresh_craft()
+		)
+		_craft_list.add_child(btn)
+	# кнопка «Создать» активна только при выбранном рецепте и доступности
+	var create: Button = _craft.find_child("CreateBtn", true, false) as Button
+	if create:
+		create.disabled = _craft_selected == "" or not GameState.can_craft(_craft_selected)
+
+
+func _on_create() -> void:
+	if _craft_selected == "":
+		return
+	var qty := int(_craft_qty.value)
+	for i in range(qty):
+		if not GameState.can_craft(_craft_selected):
+			break
+		GameState.start_craft(_craft_selected)
+	_refresh_craft()
+	refresh()
 
 
 func _on_died() -> void:
