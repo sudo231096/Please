@@ -26,8 +26,19 @@ var _heights := PackedFloat32Array()
 var _tree_spots: Array = []      # [{pos, index, alive}]
 var _rock_spots: Array = []      # [{pos, index, alive}]
 var _ore_spots: Array = []       # [{pos, kind, alive}]
+var _barrel_spots: Array = []    # [{pos, alive, node}]
+var _loot_spots: Array = []      # [{pos, alive, node}]
+var _puddles: Array = []         # [{x, z, r}]
 var _trees_mm: MultiMesh
 var _rocks_mm: MultiMesh
+
+# монументы (как в Rust): склад, парковка, завод, АЭС
+const MONUMENTS := [
+	{"kind": "warehouse", "pos": Vector3(-300.0, 0, -250.0)},
+	{"kind": "parking", "pos": Vector3(320.0, 0, -180.0)},
+	{"kind": "factory", "pos": Vector3(-260.0, 0, 320.0)},
+	{"kind": "npp", "pos": Vector3(310.0, 0, 290.0)},
+]
 
 
 func _ready() -> void:
@@ -36,12 +47,15 @@ func _ready() -> void:
 	if not GameState.return_to_pos:
 		# свежий запуск или рестарт после смерти — сбрасываем прогресс
 		GameState.reset_run()
+	_build_puddles()
 	_build_sky()
 	_build_ground()
 	_build_trees()
 	_build_rocks()
 	_build_ores()
 	_build_grass()
+	_build_monuments()
+	_build_barrels()
 	_spawn_player()
 	_build_hud()
 	_spawn_animals()
@@ -56,12 +70,48 @@ func _ground_height(x: float, z: float) -> float:
 	h += 1.5 * sin(x * 0.013 + 0.5) * sin(z * 0.011 + 2.1)
 	h += 0.8 * sin(x * 0.027 + 0.2) * cos(z * 0.023 + 1.6)
 	h += 0.4 * sin(x * 0.051 + 3.0) * sin(z * 0.047 + 0.9)
+	# мелкие бугры и неровности
+	h += 0.5 * sin(x * 0.09 + 1.1) * cos(z * 0.083 + 0.3)
+	h += 0.25 * sin(x * 0.17 + 0.7) * sin(z * 0.19 + 2.3)
 	for p in MOUNTAINS:
 		var dx: float = x - p[0]
 		var dz: float = z - p[1]
 		var d2: float = dx * dx + dz * dz
 		h += p[2] * exp(-d2 / (2.0 * p[3] * p[3]))
+	# лужи: плавные углубления, заполненные водой
+	for p in _puddles:
+		var dx: float = x - p["x"]
+		var dz: float = z - p["z"]
+		var d: float = sqrt(dx * dx + dz * dz)
+		var r: float = p["r"]
+		if d < r:
+			var k := 1.0 - d / r  # 1 в центре, 0 на краю
+			h = lerpf(h, -0.7, k * 0.75)
 	return h
+
+
+func _build_puddles() -> void:
+	_puddles.clear()
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 424242
+	for i in range(30):
+		_puddles.append({
+			"x": rng.randf_range(-HALF + 50.0, HALF - 50.0),
+			"z": rng.randf_range(-HALF + 50.0, HALF - 50.0),
+			"r": rng.randf_range(4.0, 12.0),
+		})
+
+
+func _puddle_factor(x: float, z: float) -> float:
+	# 0..1 — насколько точка внутри лужи (для окраски воды)
+	for p in _puddles:
+		var dx: float = x - p["x"]
+		var dz: float = z - p["z"]
+		var d: float = sqrt(dx * dx + dz * dz)
+		var r: float = p["r"]
+		if d < r:
+			return 1.0 - d / r
+	return 0.0
 
 
 func _mat(color: Color, emissive := Color(0, 0, 0, 0)) -> StandardMaterial3D:
@@ -103,6 +153,7 @@ func _make_tree_mesh() -> ArrayMesh:
 	var arrays := []
 	arrays.resize(Mesh.ARRAY_MAX)
 	arrays[Mesh.ARRAY_VERTEX] = verts
+	arrays[Mesh.ARRAY_NORMAL] = _flat_normals(verts, idx)
 	arrays[Mesh.ARRAY_COLOR] = cols
 	arrays[Mesh.ARRAY_INDEX] = idx
 	am.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arrays)
@@ -151,22 +202,24 @@ func _add_cone(verts: PackedVector3Array, cols: PackedColorArray, idx: PackedInt
 
 func _make_grass_mesh() -> ArrayMesh:
 	var verts := PackedVector3Array()
+	var norms := PackedVector3Array()
 	var cols := PackedColorArray()
 	var idx := PackedInt32Array()
-	var base_c := Color(0.24, 0.48, 0.18)
-	var tip_c := Color(0.4, 0.68, 0.28)
-	var h := 0.8
-	var w := 0.18
-	# пучок из 4 широких лезвий (крест-накрест), с градиентом основание->вершина
-	for i in range(4):
-		var ang := TAU * i / 4.0
+	var base_c := Color(0.3, 0.6, 0.22)
+	var tip_c := Color(0.5, 0.8, 0.34)
+	var h := 1.0
+	var w := 0.22
+	# пучок из 5 широких лезвий, нормали вверх (освещается солнцем — ярко-зелёная)
+	for i in range(5):
+		var ang := TAU * i / 5.0
 		var side := Vector3(-sin(ang), 0, cos(ang))
 		var b := verts.size()
 		var p0 := side * w
 		var p1 := -side * w
-		var p2 := -side * w * 0.25 + Vector3(0, h, 0)
-		var p3 := side * w * 0.25 + Vector3(0, h, 0)
+		var p2 := -side * w * 0.2 + Vector3(0, h, 0)
+		var p3 := side * w * 0.2 + Vector3(0, h, 0)
 		verts.append_array([p0, p1, p2, p3])
+		norms.append_array([Vector3.UP, Vector3.UP, Vector3.UP, Vector3.UP])
 		cols.append(base_c); cols.append(base_c)
 		cols.append(tip_c); cols.append(tip_c)
 		idx.append_array([b, b + 1, b + 2, b, b + 2, b + 3])
@@ -174,6 +227,7 @@ func _make_grass_mesh() -> ArrayMesh:
 	var arrays := []
 	arrays.resize(Mesh.ARRAY_MAX)
 	arrays[Mesh.ARRAY_VERTEX] = verts
+	arrays[Mesh.ARRAY_NORMAL] = norms
 	arrays[Mesh.ARRAY_COLOR] = cols
 	arrays[Mesh.ARRAY_INDEX] = idx
 	am.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arrays)
@@ -210,6 +264,7 @@ func _make_rock_mesh() -> ArrayMesh:
 	var arrays := []
 	arrays.resize(Mesh.ARRAY_MAX)
 	arrays[Mesh.ARRAY_VERTEX] = verts
+	arrays[Mesh.ARRAY_NORMAL] = _flat_normals(verts, idx)
 	arrays[Mesh.ARRAY_COLOR] = cols
 	arrays[Mesh.ARRAY_INDEX] = idx
 	am.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arrays)
@@ -234,6 +289,28 @@ func _terrain_material() -> StandardMaterial3D:
 	m.metallic = 0.0
 	m.cull_mode = BaseMaterial3D.CULL_DISABLED
 	return m
+
+
+func _flat_normals(verts: PackedVector3Array, idx: PackedInt32Array) -> PackedVector3Array:
+	# плоские нормали по граням (для деревьев/камней — чёткие грани, как в Rust)
+	var n := PackedVector3Array()
+	n.resize(verts.size())
+	for i in range(0, idx.size(), 3):
+		var a: Vector3 = verts[idx[i]]
+		var b: Vector3 = verts[idx[i + 1]]
+		var c: Vector3 = verts[idx[i + 2]]
+		var fn := (b - a).cross(c - a)
+		if fn.length_squared() > 0.0:
+			fn = fn.normalized()
+			n[idx[i]] += fn
+			n[idx[i + 1]] += fn
+			n[idx[i + 2]] += fn
+	for i in range(n.size()):
+		if n[i].length_squared() > 0.0:
+			n[i] = n[i].normalized()
+		else:
+			n[i] = Vector3.UP
+	return n
 
 
 # ---------- окружение ----------
@@ -309,8 +386,12 @@ func _build_ground() -> void:
 			var normal := Vector3(-dxh, 2.0 * TERRAIN_CELL, -dzh).normalized()
 			norms.append(normal)
 			var slope := 1.0 - normal.y  # 0 = ровно, 1 = отвесно
+			var pf := _puddle_factor(wx, wz)
 			var c := grass
-			if h > 9.0:
+			if pf > 0.12:
+				# вода в луже: глубже — темнее и синее
+				c = Color(0.14, 0.34, 0.5).lerp(Color(0.3, 0.55, 0.7), pf)
+			elif h > 9.0:
 				c = snow
 			elif h > 5.0:
 				c = rock
@@ -319,7 +400,7 @@ func _build_ground() -> void:
 			else:
 				c = dark
 			# крутые склоны переходят в скалу (как в Rust)
-			if slope > 0.30:
+			if slope > 0.30 and pf <= 0.12:
 				c = c.lerp(rock, clampf((slope - 0.30) / 0.40, 0.0, 1.0))
 			# лёгкая вариация тона, чтобы не было однородного «мыла»
 			cols.append(c.lightened(_rng.randf_range(-0.05, 0.05)))
@@ -396,7 +477,7 @@ func _build_trees() -> void:
 		_tree_spots.append({"pos": pos, "index": i, "alive": true, "big": big})
 	var inst := MultiMeshInstance3D.new()
 	inst.multimesh = mm
-	inst.material_override = _vertex_color_material()
+	inst.material_override = _terrain_material()
 	inst.name = "Trees"
 	add_child(inst)
 	_trees_mm = mm
@@ -417,7 +498,7 @@ func _build_rocks() -> void:
 		_rock_spots.append({"pos": pos, "index": i, "alive": true})
 	var inst := MultiMeshInstance3D.new()
 	inst.multimesh = mm
-	inst.material_override = _vertex_color_material()
+	inst.material_override = _terrain_material()
 	inst.name = "Rocks"
 	add_child(inst)
 	_rocks_mm = mm
@@ -428,16 +509,17 @@ func _build_grass() -> void:
 	var mm := MultiMesh.new()
 	mm.transform_format = MultiMesh.TRANSFORM_3D
 	mm.mesh = mesh
-	mm.instance_count = 2000
-	for i in range(2000):
+	mm.instance_count = 4000
+	for i in range(4000):
 		var pos := _random_spot(8.0)
-		var s := _rng.randf_range(0.6, 1.6)
+		pos.y += 0.4  # приподнимаем над рельефом (иначе «тонет» и выглядит чёрной)
+		var s := _rng.randf_range(0.7, 1.8)
 		var t := Transform3D(Basis(Vector3.UP, _rng.randf() * TAU), pos)
 		t = t.scaled(Vector3(s, s, s))
 		mm.set_instance_transform(i, t)
 	var inst := MultiMeshInstance3D.new()
 	inst.multimesh = mm
-	inst.material_override = _vertex_color_material()
+	inst.material_override = _terrain_material()  # освещённая, как рельеф
 	add_child(inst)
 
 
@@ -532,6 +614,165 @@ func _ore_crystal(pos: Vector3, color: Color, emissive: Color) -> void:
 		c.position = Vector3(pos.x + _rng.randf_range(-0.25, 0.25), pos.y + cm.height * 0.4, pos.z + _rng.randf_range(-0.25, 0.25))
 		c.rotation_degrees = Vector3(_rng.randf_range(-20, 20), 0, _rng.randf_range(-20, 20))
 		add_child(c)
+
+
+# ---------- бочки / монументы / ящики с лутом ----------
+
+func _cyl_at(pos: Vector3, r: float, h: float, color: Color, parent: Node3D = null) -> MeshInstance3D:
+	var m := MeshInstance3D.new()
+	var cm := CylinderMesh.new()
+	cm.top_radius = r
+	cm.bottom_radius = r
+	cm.height = h
+	m.mesh = cm
+	m.material_override = _mat(color)
+	m.position = pos + Vector3(0, h * 0.5, 0)
+	(parent if parent else self).add_child(m)
+	return m
+
+
+func _add_barrel(x: float, z: float) -> void:
+	var y := _ground_height(x, z)
+	var node := Node3D.new()
+	node.position = Vector3(x, y, z)
+	var body := MeshInstance3D.new()
+	var cm := CylinderMesh.new()
+	cm.top_radius = 0.45
+	cm.bottom_radius = 0.45
+	cm.height = 1.1
+	body.mesh = cm
+	body.material_override = _mat(Color(0.62, 0.3, 0.14))
+	body.position = Vector3(0, 0.55, 0)
+	node.add_child(body)
+	var band := MeshInstance3D.new()
+	var bm := CylinderMesh.new()
+	bm.top_radius = 0.47
+	bm.bottom_radius = 0.47
+	bm.height = 0.14
+	band.mesh = bm
+	band.material_override = _mat(Color(0.35, 0.35, 0.38))
+	band.position = Vector3(0, 0.55, 0)
+	node.add_child(band)
+	add_child(node)
+	_barrel_spots.append({"pos": Vector3(x, y, z), "alive": true, "node": node})
+
+
+func _add_lootbox(x: float, z: float) -> void:
+	var y := _ground_height(x, z)
+	var node := Node3D.new()
+	node.position = Vector3(x, y, z)
+	var crate := MeshInstance3D.new()
+	var cm := BoxMesh.new()
+	cm.size = Vector3(1.0, 0.9, 1.0)
+	crate.mesh = cm
+	crate.material_override = _mat(Color(0.5, 0.4, 0.24))
+	crate.position = Vector3(0, 0.45, 0)
+	node.add_child(crate)
+	var lid := MeshInstance3D.new()
+	var lm := BoxMesh.new()
+	lm.size = Vector3(1.06, 0.16, 1.06)
+	lid.mesh = lm
+	lid.material_override = _mat(Color(0.33, 0.26, 0.16))
+	lid.position = Vector3(0, 0.95, 0)
+	node.add_child(lid)
+	add_child(node)
+	_loot_spots.append({"pos": Vector3(x, y, z), "alive": true, "node": node})
+
+
+func _build_barrels() -> void:
+	_barrel_spots.clear()
+	for i in range(22):
+		var pos := _grid_spot(44.0, 16.0)
+		_add_barrel(pos.x, pos.z)
+	for m in MONUMENTS:
+		var mp: Vector3 = m["pos"]
+		_add_barrel(mp.x + 6.0, mp.z + 6.0)
+		_add_barrel(mp.x - 6.0, mp.z - 6.0)
+
+
+func _build_monuments() -> void:
+	for m in MONUMENTS:
+		var mp: Vector3 = m["pos"]
+		var kind: String = m["kind"]
+		match kind:
+			"warehouse": _build_warehouse(mp.x, mp.z)
+			"parking": _build_parking(mp.x, mp.z)
+			"factory": _build_factory(mp.x, mp.z)
+			"npp": _build_npp(mp.x, mp.z)
+
+
+func _build_warehouse(x: float, z: float) -> void:
+	var y := _ground_height(x, z)
+	var base := Node3D.new()
+	base.position = Vector3(x, y, z)
+	add_child(base)
+	var wall := Color(0.55, 0.52, 0.5)
+	var roof := Color(0.3, 0.3, 0.34)
+	_box_at(Vector3(0, 0, 12), Vector3(30, 7, 0.4), wall, base)
+	_box_at(Vector3(0, 0, -12), Vector3(30, 7, 0.4), wall, base)
+	_box_at(Vector3(-15, 0, 0), Vector3(0.4, 7, 24), wall, base)
+	_box_at(Vector3(15, 0, 0), Vector3(0.4, 7, 24), wall, base)
+	_box_at(Vector3(0, 7, 0), Vector3(30.6, 0.4, 24.6), roof, base)
+	_add_lootbox(x + 3, z + 3)
+	_add_lootbox(x - 3, z + 4)
+	_add_lootbox(x, z - 3)
+	_add_lootbox(x + 5, z - 2)
+
+
+func _build_parking(x: float, z: float) -> void:
+	var y := _ground_height(x, z)
+	var base := Node3D.new()
+	base.position = Vector3(x, y, z)
+	add_child(base)
+	_box_at(Vector3(0, -0.05, 0), Vector3(40, 0.2, 40), Color(0.22, 0.22, 0.24), base)
+	for i in range(8):
+		_box_at(Vector3(-18 + i * 5.0, 0.06, 0), Vector3(0.15, 0.02, 20), Color(0.9, 0.85, 0.4), base)
+	_box_at(Vector3(-6, 0.5, -8), Vector3(2.0, 1.2, 4.2), Color(0.7, 0.2, 0.2), base)
+	_box_at(Vector3(6, 0.5, 8), Vector3(2.0, 1.2, 4.2), Color(0.2, 0.4, 0.7), base)
+	_box_at(Vector3(6, 0.5, -6), Vector3(2.0, 1.2, 4.2), Color(0.25, 0.6, 0.3), base)
+	_add_lootbox(x + 8, z + 8)
+	_add_lootbox(x - 8, z - 8)
+	_add_lootbox(x + 10, z - 6)
+
+
+func _build_factory(x: float, z: float) -> void:
+	var y := _ground_height(x, z)
+	var base := Node3D.new()
+	base.position = Vector3(x, y, z)
+	add_child(base)
+	var wall := Color(0.45, 0.44, 0.42)
+	_box_at(Vector3(0, 0, 10), Vector3(30, 9, 0.4), wall, base)
+	_box_at(Vector3(0, 0, -10), Vector3(30, 9, 0.4), wall, base)
+	_box_at(Vector3(-15, 0, 0), Vector3(0.4, 9, 20), wall, base)
+	_box_at(Vector3(15, 0, 0), Vector3(0.4, 9, 20), wall, base)
+	_box_at(Vector3(0, 9, 0), Vector3(30.6, 0.4, 20.6), Color(0.28, 0.28, 0.3), base)
+	_cyl_at(Vector3(-8, 0, 0), 1.0, 14.0, Color(0.4, 0.4, 0.42), base)
+	_cyl_at(Vector3(8, 0, 0), 1.0, 14.0, Color(0.4, 0.4, 0.42), base)
+	_sphere_at(Vector3(-8, 15.5, 0), 1.6, 1.6, Color(0.7, 0.7, 0.72), base)
+	_sphere_at(Vector3(8, 15.5, 0), 1.6, 1.6, Color(0.7, 0.7, 0.72), base)
+	_add_lootbox(x + 4, z + 4)
+	_add_lootbox(x - 4, z - 4)
+	_add_lootbox(x + 6, z - 3)
+	_add_lootbox(x - 6, z + 3)
+
+
+func _build_npp(x: float, z: float) -> void:
+	var y := _ground_height(x, z)
+	var base := Node3D.new()
+	base.position = Vector3(x, y, z)
+	add_child(base)
+	_box_at(Vector3(0, 0, 0), Vector3(20, 12, 20), Color(0.5, 0.5, 0.52), base)
+	_box_at(Vector3(0, 12, 0), Vector3(12, 8, 12), Color(0.55, 0.55, 0.57), base)
+	_cyl_at(Vector3(-22, 0, 0), 6.0, 22.0, Color(0.6, 0.6, 0.62), base)
+	_cyl_at(Vector3(22, 0, 0), 6.0, 22.0, Color(0.6, 0.6, 0.62), base)
+	_cyl_at(Vector3(-22, 0, 0), 4.0, 24.0, Color(0.55, 0.55, 0.57), base)
+	_cyl_at(Vector3(22, 0, 0), 4.0, 24.0, Color(0.55, 0.55, 0.57), base)
+	_sphere_at(Vector3(-22, 26, 0), 2.5, 2.5, Color(0.8, 0.85, 0.9), base)
+	_sphere_at(Vector3(22, 26, 0), 2.5, 2.5, Color(0.8, 0.85, 0.9), base)
+	_add_lootbox(x + 5, z + 5)
+	_add_lootbox(x - 5, z + 6)
+	_add_lootbox(x + 6, z - 5)
+	_add_lootbox(x - 6, z - 5)
 
 
 # ---------- игрок / животные / HUD ----------
@@ -662,6 +903,20 @@ func _harvest(origin: Vector3, look_dir: Vector3) -> String:
 				best_d = d
 				best_kind = "ore"
 				best_spot = o
+	for b in _barrel_spots:
+		if b["alive"] and _ahead(b["pos"], origin, look_dir, best_d):
+			var d: float = (b["pos"] - origin).length()
+			if d < best_d:
+				best_d = d
+				best_kind = "barrel"
+				best_spot = b
+	for l in _loot_spots:
+		if l["alive"] and _ahead(l["pos"], origin, look_dir, best_d):
+			var d: float = (l["pos"] - origin).length()
+			if d < best_d:
+				best_d = d
+				best_kind = "lootbox"
+				best_spot = l
 	if best_kind == "":
 		return ""
 
@@ -684,6 +939,22 @@ func _harvest(origin: Vector3, look_dir: Vector3) -> String:
 			else:
 				GameState.add_resource("metal", int(10.0 * GameState.mining_bonus()))
 				GameState.add_resource("scrap", int(3.0 * GameState.mining_bonus()))
+			_remove_resource(best_spot, null)
+		"barrel":
+			# бочка даёт от 10 до 50 скрапа
+			GameState.add_resource("scrap", _rng.randi_range(10, 50))
+			_remove_resource(best_spot, null)
+		"lootbox":
+			# случайный лут: вода/еда/металл/скрап
+			var roll := _rng.randi_range(0, 3)
+			if roll == 0:
+				GameState.add_resource("water", _rng.randi_range(2, 5))
+			elif roll == 1:
+				GameState.add_resource("meat", _rng.randi_range(1, 3))
+			elif roll == 2:
+				GameState.add_resource("metal", _rng.randi_range(5, 15))
+			else:
+				GameState.add_resource("scrap", _rng.randi_range(15, 40))
 			_remove_resource(best_spot, null)
 	if _hud:
 		_hud.refresh()

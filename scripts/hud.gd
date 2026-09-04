@@ -13,6 +13,9 @@ var _over: Control
 var _craft: Control
 var _craft_list: VBoxContainer
 var _rot_btn: Button
+var _study: Control
+var _study_list: VBoxContainer
+var _study_btn: Button
 
 
 func bind(p: Node3D) -> void:
@@ -265,6 +268,30 @@ func _build() -> void:
 
 	_build_craft_menu()
 
+	# кнопка «Изучить» (видна только когда построен верстак)
+	_study_btn = Button.new()
+	_study_btn.text = "ИЗУЧИТЬ"
+	_study_btn.focus_mode = Control.FOCUS_NONE
+	_study_btn.anchor_left = side_anchor
+	_study_btn.anchor_right = side_anchor
+	_study_btn.anchor_top = 1.0
+	_study_btn.anchor_bottom = 1.0
+	_study_btn.offset_left = -250 if on_right else 100
+	_study_btn.offset_right = -100 if on_right else 250
+	_study_btn.offset_top = -500
+	_study_btn.offset_bottom = -410
+	_study_btn.add_theme_font_size_override("font_size", 20)
+	_study_btn.modulate = Color(0.6, 0.5, 0.9)
+	_study_btn.visible = false
+	_study_btn.pressed.connect(func() -> void:
+		_study.visible = not _study.visible
+		if _study.visible:
+			_refresh_study()
+	)
+	add_child(_study_btn)
+
+	_build_study_menu()
+
 	# кнопка «Повернуть» (видна только в режиме строительства)
 	_rot_btn = Button.new()
 	_rot_btn.text = "ПОВЕРНУТЬ"
@@ -357,6 +384,7 @@ func _save_pos_and_go(scene: String) -> void:
 func _process(delta: float) -> void:
 	_update_bars()
 	_rot_btn.visible = GameState.build_mode
+	_study_btn.visible = GameState.workbench_built
 
 
 func _update_bars() -> void:
@@ -437,6 +465,97 @@ func _build_craft_menu() -> void:
 	close.add_theme_font_size_override("font_size", 20)
 	close.pressed.connect(func() -> void: _craft.visible = false)
 	v.add_child(close)
+
+
+func _build_study_menu() -> void:
+	_study = Control.new()
+	_study.set_anchors_preset(Control.PRESET_FULL_RECT)
+	_study.visible = false
+	add_child(_study)
+	var dim := ColorRect.new()
+	dim.color = Color(0, 0, 0, 0.7)
+	dim.set_anchors_preset(Control.PRESET_FULL_RECT)
+	_study.add_child(dim)
+
+	var panel := PanelContainer.new()
+	panel.anchor_left = 0.5
+	panel.anchor_right = 0.5
+	panel.anchor_top = 0.5
+	panel.anchor_bottom = 0.5
+	panel.offset_left = -280
+	panel.offset_right = 280
+	panel.offset_top = -260
+	panel.offset_bottom = 260
+	_study.add_child(panel)
+
+	var v := VBoxContainer.new()
+	v.add_theme_constant_override("separation", 8)
+	panel.add_child(v)
+
+	var t := Label.new()
+	t.text = "ИЗУЧЕНИЕ (в верстаке)"
+	t.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	t.add_theme_font_size_override("font_size", 28)
+	t.modulate = Color(0.6, 0.5, 0.9)
+	v.add_child(t)
+
+	var scrap_l := Label.new()
+	scrap_l.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	scrap_l.add_theme_font_size_override("font_size", 16)
+	scrap_l.modulate = Color(0.9, 0.9, 0.85)
+	scrap_l.name = "ScrapLabel"
+	v.add_child(scrap_l)
+
+	var sep := HSeparator.new()
+	v.add_child(sep)
+
+	_study_list = VBoxContainer.new()
+	_study_list.add_theme_constant_override("separation", 6)
+	v.add_child(_study_list)
+
+	var close := Button.new()
+	close.text = "Закрыть"
+	close.focus_mode = Control.FOCUS_NONE
+	close.add_theme_font_size_override("font_size", 20)
+	close.pressed.connect(func() -> void: _study.visible = false)
+	v.add_child(close)
+
+
+func _refresh_study() -> void:
+	for c in _study_list.get_children():
+		c.queue_free()
+	var scrap_l := _study.find_child("ScrapLabel", true, false) as Label
+	if scrap_l:
+		scrap_l.text = "Скрап: %d" % GameState.scrap
+	for id in GameState.TECH_TREE:
+		var t: Dictionary = GameState.TECH_TREE[id]
+		var tid: String = id
+		var row := HBoxContainer.new()
+		_study_list.add_child(row)
+		var name_l := Label.new()
+		name_l.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		name_l.add_theme_font_size_override("font_size", 17)
+		if GameState.is_tech_learned(tid):
+			name_l.text = t["name"] + " — изучено"
+			name_l.modulate = Color(0.5, 0.9, 0.6)
+		else:
+			var u := ""
+			for uid in t["unlocks"]:
+				u += " " + uid
+			name_l.text = "%s (%d скрапа)%s" % [t["name"], t["cost"], " → " + u.strip_edges() if u != "" else ""]
+		row.add_child(name_l)
+		var btn := Button.new()
+		btn.focus_mode = Control.FOCUS_NONE
+		btn.text = "Изучить"
+		btn.add_theme_font_size_override("font_size", 16)
+		btn.disabled = GameState.is_tech_learned(tid) or not GameState.tech_available(tid) or GameState.scrap < int(t["cost"])
+		btn.pressed.connect(func() -> void:
+			if GameState.research(tid):
+				_refresh_study()
+				_refresh_craft()
+				refresh()
+		)
+		row.add_child(btn)
 
 
 func _refresh_craft() -> void:
