@@ -22,6 +22,7 @@ var _player: CharacterBody3D
 var _hud: CanvasLayer
 var _rng := RandomNumberGenerator.new()
 var _heights := PackedFloat32Array()
+var _terrain_model: Node3D = null
 # позиции добываемых объектов (для добычи вблизи)
 var _tree_spots: Array = []      # [{pos, index, alive}]
 var _rock_spots: Array = []      # [{pos, index, alive}]
@@ -50,6 +51,10 @@ func _ready() -> void:
 	_build_puddles()
 	_build_sky()
 	_build_ground()
+	# ждём синхронизации физики, чтобы сэмплировать высоту скачанной карты
+	await get_tree().physics_frame
+	await get_tree().physics_frame
+	_sample_terrain_heights()
 	_build_trees()
 	_build_rocks()
 	_build_ores()
@@ -425,82 +430,12 @@ func _color_noise(x: float, z: float) -> float:
 
 
 func _build_ground() -> void:
-	var n := TERRAIN_N + 1
-	_heights.resize(n * n)
-	for z in range(n):
-		for x in range(n):
-			var wx := -HALF + x * TERRAIN_CELL
-			var wz := -HALF + z * TERRAIN_CELL
-			_heights[z * n + x] = _ground_height(wx, wz)
-
-	var verts := PackedVector3Array()
-	var norms := PackedVector3Array()
-	var cols := PackedColorArray()
-	var idx := PackedInt32Array()
-	var grass := Color(0.32, 0.48, 0.2)
-	var dark := Color(0.2, 0.37, 0.15)
-	var dirt := Color(0.45, 0.37, 0.24)
-	var rock := Color(0.4, 0.4, 0.44)
-	var snow := Color(0.93, 0.95, 0.98)
-	for z in range(n):
-		for x in range(n):
-			var wx := -HALF + x * TERRAIN_CELL
-			var wz := -HALF + z * TERRAIN_CELL
-			var h := _heights[z * n + x]
-			verts.append(Vector3(wx, h, wz))
-			# нормаль из градиента высоты (соседние ячейки сетки)
-			var x0 := clampi(x - 1, 0, n - 1)
-			var x1 := clampi(x + 1, 0, n - 1)
-			var z0 := clampi(z - 1, 0, n - 1)
-			var z1 := clampi(z + 1, 0, n - 1)
-			var dxh := _heights[z * n + x1] - _heights[z * n + x0]
-			var dzh := _heights[z1 * n + x] - _heights[z0 * n + x]
-			var normal := Vector3(-dxh, 2.0 * TERRAIN_CELL, -dzh).normalized()
-			norms.append(normal)
-			var slope := 1.0 - normal.y  # 0 = ровно, 1 = отвесно
-			var pf := _puddle_factor(wx, wz)
-			var c := grass
-			if pf > 0.12:
-				# вода в луже: глубже — темнее и синее
-				c = Color(0.14, 0.34, 0.5).lerp(Color(0.3, 0.55, 0.7), pf)
-			elif h > 9.0:
-				c = snow
-			elif h > 5.0:
-				c = rock
-			elif h > 2.0:
-				c = grass
-			else:
-				c = dark
-			# земляные проплешины в низинах (как в Rust)
-			if h < 2.5 and pf <= 0.12:
-				c = c.lerp(dirt, _color_noise(wx, wz) * 0.5)
-			# крутые склоны переходят в скалу (как в Rust)
-			if slope > 0.28 and pf <= 0.12:
-				c = c.lerp(rock, clampf((slope - 0.28) / 0.45, 0.0, 1.0))
-			# естественная пятнистость тона (вместо однородной заливки)
-			var v := _color_noise(wx * 1.7, wz * 1.7 + 9.0)
-			c = c.lightened((v - 0.5) * 0.14)
-			cols.append(c)
-	for z in range(TERRAIN_N):
-		for x in range(TERRAIN_N):
-			var i0 := z * n + x
-			var i1 := z * n + x + 1
-			var i2 := (z + 1) * n + x
-			var i3 := (z + 1) * n + x + 1
-			idx.append_array([i0, i2, i1, i1, i2, i3])
-
-	var mesh := ArrayMesh.new()
-	var arrays := []
-	arrays.resize(Mesh.ARRAY_MAX)
-	arrays[Mesh.ARRAY_VERTEX] = verts
-	arrays[Mesh.ARRAY_NORMAL] = norms
-	arrays[Mesh.ARRAY_COLOR] = cols
-	arrays[Mesh.ARRAY_INDEX] = idx
-	mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arrays)
-	var mi := MeshInstance3D.new()
-	mi.mesh = mesh
-	mi.material_override = _terrain_material()
-	add_child(mi)
+	# скачанная текстурированная карта (worldmachine) — большая и детальная
+	_terrain_model = load("res://models/monument_terrain.glb").instantiate()
+	_terrain_model.rotation_degrees = Vector3(-90, 0, 0)
+	_terrain_model.scale = Vector3(1024.0, 1024.0, 100.0)
+	_terrain_model.position = Vector3(-512.0, -5.0, 512.0)
+	add_child(_terrain_model)
 
 	# страховочная коллизия внизу
 	var g := StaticBody3D.new()
@@ -513,6 +448,74 @@ func _build_ground() -> void:
 	gcol.shape = cs
 	gcol.position = Vector3(0, -40.0, 0)
 	g.add_child(gcol)
+
+
+func _sample_terrain_heights() -> void:
+	# растрируем треугольники скачанной карты в сетку высот (один раз при загрузке)
+	var n := TERRAIN_N + 1
+	_heights.resize(n * n)
+	for i in range(_heights.size()):
+		_heights[i] = -1e9
+	if _terrain_model == null:
+		return
+	for mi in _terrain_model.find_children("*", "MeshInstance3D", true, false):
+		var mesh: Mesh = mi.mesh
+		if mesh == null:
+			continue
+		var t: Transform3D = mi.global_transform
+		for s in range(mesh.get_surface_count()):
+			var arrays := mesh.surface_get_arrays(s)
+			var verts: PackedVector3Array = arrays[Mesh.ARRAY_VERTEX]
+			var idx: PackedInt32Array = arrays[Mesh.ARRAY_INDEX]
+			for i in range(0, idx.size(), 3):
+				var a: Vector3 = t * verts[idx[i]]
+				var b: Vector3 = t * verts[idx[i + 1]]
+				var c: Vector3 = t * verts[idx[i + 2]]
+				_raster_tri(a, b, c, n)
+	# заливаем редкие дыры (края треугольников) соседними значениями
+	for i in range(_heights.size()):
+		if _heights[i] < -1e8:
+			_heights[i] = 0.0
+
+
+func _raster_tri(a: Vector3, b: Vector3, c: Vector3, n: int) -> void:
+	var minx := minf(minf(a.x, b.x), c.x)
+	var maxx := maxf(maxf(a.x, b.x), c.x)
+	var minz := minf(minf(a.z, b.z), c.z)
+	var maxz := maxf(maxf(a.z, b.z), c.z)
+	var cx0 := clampi(int(floor((minx + HALF) / TERRAIN_CELL)), 0, n - 1)
+	var cx1 := clampi(int(floor((maxx + HALF) / TERRAIN_CELL)), 0, n - 1)
+	var cz0 := clampi(int(floor((minz + HALF) / TERRAIN_CELL)), 0, n - 1)
+	var cz1 := clampi(int(floor((maxz + HALF) / TERRAIN_CELL)), 0, n - 1)
+	for cx in range(cx0, cx1 + 1):
+		for cz in range(cz0, cz1 + 1):
+			var wx := -HALF + cx * TERRAIN_CELL
+			var wz := -HALF + cz * TERRAIN_CELL
+			var h := _bary_height(a, b, c, wx, wz)
+			if h > -1e8:
+				var gi := cz * n + cx
+				_heights[gi] = maxf(_heights[gi], h)
+
+
+func _bary_height(a: Vector3, b: Vector3, c: Vector3, x: float, z: float) -> float:
+	# высота в точке (x,z) через 2D барицентрические координаты (проекция XZ)
+	var v0 := Vector2(c.x - a.x, c.z - a.z)
+	var v1 := Vector2(b.x - a.x, b.z - a.z)
+	var v2 := Vector2(x - a.x, z - a.z)
+	var d00 := v0.dot(v0)
+	var d01 := v0.dot(v1)
+	var d11 := v1.dot(v1)
+	var d20 := v2.dot(v0)
+	var d21 := v2.dot(v1)
+	var denom := d00 * d11 - d01 * d01
+	if absf(denom) < 1e-9:
+		return -1e9
+	var v := (d11 * d20 - d01 * d21) / denom
+	var w := (d00 * d21 - d01 * d20) / denom
+	var u := 1.0 - v - w
+	if u < -1e-4 or v < -1e-4 or w < -1e-4:
+		return -1e9
+	return a.y * u + b.y * v + c.y * w
 
 
 func _random_spot(min_r: float) -> Vector3:

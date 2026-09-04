@@ -168,6 +168,24 @@ func _build() -> void:
 	)
 	add_child(inv_btn)
 
+	# кнопка «В МЕНЮ» (правый верхний угол)
+	var exit_btn := Button.new()
+	exit_btn.text = "В МЕНЮ"
+	exit_btn.focus_mode = Control.FOCUS_NONE
+	exit_btn.anchor_left = 1.0
+	exit_btn.anchor_right = 1.0
+	exit_btn.offset_left = -170
+	exit_btn.offset_right = -20
+	exit_btn.offset_top = 20
+	exit_btn.offset_bottom = 66
+	exit_btn.add_theme_font_size_override("font_size", 20)
+	exit_btn.modulate = Color(0.9, 0.5, 0.45)
+	exit_btn.pressed.connect(func() -> void:
+		GameState.return_to_pos = false
+		get_tree().change_scene_to_file("res://scenes/MainMenu.tscn")
+	)
+	add_child(exit_btn)
+
 	# джойстик (слева или справа — из настроек)
 	var joy := Control.new()
 	joy.set_script(JoystickScr)
@@ -247,7 +265,7 @@ func _build() -> void:
 	)
 	add_child(use_btn)
 
-	# кнопка приседа
+	# кнопка приседа (выше и правее)
 	var crouch := Button.new()
 	crouch.text = "СЕСТЬ"
 	crouch.focus_mode = Control.FOCUS_NONE
@@ -255,10 +273,10 @@ func _build() -> void:
 	crouch.anchor_right = side_anchor
 	crouch.anchor_top = 1.0
 	crouch.anchor_bottom = 1.0
-	crouch.offset_left = -250 if on_right else 100
-	crouch.offset_right = -100 if on_right else 250
-	crouch.offset_top = -300
-	crouch.offset_bottom = -200
+	crouch.offset_left = -180 if on_right else 170
+	crouch.offset_right = -30 if on_right else 320
+	crouch.offset_top = -430
+	crouch.offset_bottom = -330
 	crouch.add_theme_font_size_override("font_size", 20)
 	crouch.button_down.connect(func() -> void: _player.set_meta("mob_crouch", true))
 	crouch.button_up.connect(func() -> void: _player.set_meta("mob_crouch", false))
@@ -274,8 +292,8 @@ func _build() -> void:
 	craft_btn.anchor_bottom = 1.0
 	craft_btn.offset_left = -250 if on_right else 100
 	craft_btn.offset_right = -100 if on_right else 250
-	craft_btn.offset_top = -400
-	craft_btn.offset_bottom = -300
+	craft_btn.offset_top = -540
+	craft_btn.offset_bottom = -440
 	craft_btn.add_theme_font_size_override("font_size", 20)
 	craft_btn.modulate = Color(0.8, 0.65, 0.4)
 	craft_btn.pressed.connect(func() -> void:
@@ -296,8 +314,8 @@ func _build() -> void:
 	_study_btn.anchor_bottom = 1.0
 	_study_btn.offset_left = -250 if on_right else 100
 	_study_btn.offset_right = -100 if on_right else 250
-	_study_btn.offset_top = -500
-	_study_btn.offset_bottom = -410
+	_study_btn.offset_top = -650
+	_study_btn.offset_bottom = -560
 	_study_btn.add_theme_font_size_override("font_size", 20)
 	_study_btn.modulate = Color(0.6, 0.5, 0.9)
 	_study_btn.visible = false
