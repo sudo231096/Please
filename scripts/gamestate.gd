@@ -54,21 +54,30 @@ var learned_techs := {}
 
 # все рецепты (доступны только после изучения технологии)
 const RECIPES := {
-	"hatchet": {"name": "Каменный топор", "cost": {"wood": 25}, "type": "tool", "tech": ""},
-	"pickaxe": {"name": "Каменная кирка", "cost": {"wood": 25}, "type": "tool", "tech": ""},
-	"spear": {"name": "Копьё", "cost": {"wood": 50, "stone": 15}, "type": "weapon", "tech": ""},
-	"bow": {"name": "Лук", "cost": {"wood": 50, "cloth": 25}, "type": "weapon", "tech": ""},
-	"campfire": {"name": "Костёр", "cost": {"wood": 100}, "type": "build", "tech": ""},
-	"wall": {"name": "Деревянная стена", "cost": {"wood": 50}, "type": "build", "tech": ""},
-	"floor": {"name": "Деревянный фундамент", "cost": {"wood": 100}, "type": "build", "tech": ""},
-	"furnace": {"name": "Печь", "cost": {"stone": 200, "wood": 50}, "type": "build", "tech": "masonry"},
-	"door": {"name": "Деревянная дверь", "cost": {"wood": 100}, "type": "build", "tech": "masonry"},
-	"workbench": {"name": "Верстак", "cost": {"wood": 200, "stone": 100}, "type": "build", "tech": ""},
-	"bag": {"name": "Спальник", "cost": {"cloth": 25}, "type": "build", "tech": "metallurgy"},
+	"hatchet": {"name": "Каменный топор", "cost": {"wood": 25}, "type": "tool", "cat": "Инструменты", "tech": "", "time": 3.0},
+	"pickaxe": {"name": "Каменная кирка", "cost": {"wood": 25}, "type": "tool", "cat": "Инструменты", "tech": "", "time": 3.0},
+	"torch": {"name": "Факел", "cost": {"wood": 15, "cloth": 5}, "type": "tool", "cat": "Инструменты", "tech": "", "time": 2.0},
+	"spear": {"name": "Копьё", "cost": {"wood": 50, "stone": 15}, "type": "weapon", "cat": "Оружие", "tech": "", "time": 5.0},
+	"bow": {"name": "Лук", "cost": {"wood": 50, "cloth": 25}, "type": "weapon", "cat": "Оружие", "tech": "", "time": 5.0},
+	"arrow": {"name": "Стрелы (x5)", "cost": {"wood": 20, "stone": 10}, "type": "ammo", "cat": "Оружие", "tech": "", "time": 2.0},
+	"bandage": {"name": "Тканевый бинт", "cost": {"cloth": 10}, "type": "med", "cat": "Медицина", "tech": "", "time": 1.5},
+	"campfire": {"name": "Костёр", "cost": {"wood": 100}, "type": "build", "cat": "Строительство", "tech": "", "time": 2.0},
+	"wall": {"name": "Деревянная стена", "cost": {"wood": 50}, "type": "build", "cat": "Строительство", "tech": "", "time": 1.0},
+	"floor": {"name": "Деревянный фундамент", "cost": {"wood": 100}, "type": "build", "cat": "Строительство", "tech": "", "time": 2.0},
+	"furnace": {"name": "Печь", "cost": {"stone": 200, "wood": 50}, "type": "build", "cat": "Строительство", "tech": "masonry", "time": 6.0},
+	"door": {"name": "Деревянная дверь", "cost": {"wood": 100}, "type": "build", "cat": "Строительство", "tech": "masonry", "time": 3.0},
+	"workbench": {"name": "Верстак", "cost": {"wood": 200, "stone": 100}, "type": "build", "cat": "Строительство", "tech": "", "time": 8.0},
+	"bag": {"name": "Спальник", "cost": {"cloth": 25}, "type": "build", "cat": "Строительство", "tech": "metallurgy", "time": 4.0},
 }
 
 var built := {"campfire": 0, "furnace": 0, "wall": 0, "floor": 0, "door": 0, "bag": 0, "workbench": 0}
 var workbench_built := false
+var arrows := 0
+var has_torch := false
+
+# очередь крафта: [{id, name, remaining, total}]
+var _crafting: Array = []
+var pending_build := ""  # постройка, завершившая крафт — войти в режим строительства
 
 
 # предметы hotbar
@@ -116,14 +125,18 @@ func reset_run() -> void:
 	meat = 0
 	water = 0
 	kills = 0
+	arrows = 0
 	has_hatchet = false
 	has_pickaxe = false
 	has_bow = false
 	has_spear = false
+	has_torch = false
 	workbench_built = false
 	learned_techs.clear()
 	for k in built:
 		built[k] = 0
+	_crafting.clear()
+	pending_build = ""
 
 
 func tick(delta: float) -> void:
@@ -133,6 +146,7 @@ func tick(delta: float) -> void:
 		hp = maxf(0.0, hp - delta * 1.2)
 	if thirst <= 0.0:
 		hp = maxf(0.0, hp - delta * 2.0)
+	tick_craft(delta)
 
 
 func eat() -> void:
@@ -289,16 +303,59 @@ func can_craft(id: String) -> bool:
 
 
 func craft(id: String) -> bool:
+	# мгновенный крафт (совместимость) — реально используется start_craft
 	if not can_craft(id):
 		return false
 	var cost: Dictionary = RECIPES[id]["cost"]
 	for r in cost:
 		take_resource(r, cost[r])
+	_finish_craft(id)
+	return true
+
+
+func start_craft(id: String) -> bool:
+	# крафт с затратой времени: списываем ресурсы и ставим в очередь
+	if not can_craft(id):
+		return false
+	var cost: Dictionary = RECIPES[id]["cost"]
+	for r in cost:
+		take_resource(r, cost[r])
+	var t: float = RECIPES[id].get("time", 0.0)
+	if t <= 0.0:
+		_finish_craft(id)
+	else:
+		_crafting.append({"id": id, "name": RECIPES[id]["name"], "remaining": t, "total": t})
+	return true
+
+
+func tick_craft(delta: float) -> void:
+	if _crafting.is_empty():
+		return
+	var done: Array = []
+	for c in _crafting:
+		c["remaining"] -= delta
+		if c["remaining"] <= 0.0:
+			done.append(c)
+	for c in done:
+		_crafting.erase(c)
+		_finish_craft(c["id"])
+
+
+func _finish_craft(id: String) -> void:
 	match id:
 		"hatchet": has_hatchet = true
 		"pickaxe": has_pickaxe = true
 		"bow": has_bow = true
 		"spear": has_spear = true
+		"torch": has_torch = true
+		"arrow": arrows += 5
+		"bandage": hp = minf(max_hp, hp + 30.0)
 		"workbench": workbench_built = true
-		_: built[id] = built.get(id, 0) + 1
-	return true
+		_:
+			if RECIPES[id]["type"] == "build":
+				built[id] = built.get(id, 0) + 1
+				pending_build = id
+
+
+func crafting_queue() -> Array:
+	return _crafting

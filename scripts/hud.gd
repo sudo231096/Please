@@ -421,6 +421,15 @@ func _process(delta: float) -> void:
 	_update_bars()
 	_rot_btn.visible = GameState.build_mode
 	_study_btn.visible = GameState.workbench_built
+	# постройка завершила крафт — входим в режим строительства
+	if GameState.pending_build != "":
+		var kind: String = GameState.pending_build
+		GameState.pending_build = ""
+		GameState.begin_build(kind)
+		_craft.visible = false
+	# живое обновление очереди крафта (проценты)
+	if _craft.visible and not GameState.crafting_queue().is_empty():
+		_refresh_craft()
 
 
 func _update_bars() -> void:
@@ -600,28 +609,54 @@ func _refresh_craft() -> void:
 	# строка ресурсов
 	var res_label := _craft.find_child("ResLabel", true, false) as Label
 	if res_label:
-		res_label.text = "Дерево:%d  Камень:%d  Сера:%d  Железо:%d  Скрап:%d" % [GameState.wood, GameState.stone, GameState.sulfur, GameState.iron, GameState.scrap]
-	# кнопки рецептов (все доступны сразу)
+		res_label.text = "Дерево:%d  Камень:%d  Сера:%d  Железо:%d  Ткань:%d  Скрап:%d" % [GameState.wood, GameState.stone, GameState.sulfur, GameState.iron, GameState.cloth, GameState.scrap]
+	# активная очередь крафта
+	var queue := GameState.crafting_queue()
+	if not queue.is_empty():
+		var q := Label.new()
+		var parts: Array = []
+		for c in queue:
+			var pct := int((1.0 - c["remaining"] / c["total"]) * 100.0)
+			parts.append("%s %d%%" % [c["name"], pct])
+		q.text = "Изготовление: " + " · ".join(parts)
+		q.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		q.add_theme_font_size_override("font_size", 14)
+		q.modulate = Color(0.9, 0.75, 0.4)
+		_craft_list.add_child(q)
+	# группировка рецептов по категориям
+	var cats: Array = []
 	for id in GameState.RECIPES:
 		var rec: Dictionary = GameState.RECIPES[id]
-		var btn := Button.new()
-		btn.focus_mode = Control.FOCUS_NONE
-		btn.add_theme_font_size_override("font_size", 18)
-		var cost_txt := ""
-		for r in rec["cost"]:
-			cost_txt += " %s:%d" % [r, rec["cost"][r]]
-		btn.text = rec["name"] + "  (" + cost_txt.strip_edges() + ")"
-		btn.disabled = not GameState.can_craft(id)
-		var rid: String = id
-		btn.pressed.connect(func() -> void:
-			if GameState.craft(rid):
-				if rec["type"] == "build":
-					GameState.begin_build(rid)
-					_craft.visible = false
-				_refresh_craft()
-				refresh()
-		)
-		_craft_list.add_child(btn)
+		var cat: String = rec.get("cat", "Прочее")
+		if not cats.has(cat):
+			cats.append(cat)
+	for cat in cats:
+		var hdr := Label.new()
+		hdr.text = cat
+		hdr.add_theme_font_size_override("font_size", 18)
+		hdr.modulate = Color(0.85, 0.75, 0.5)
+		_craft_list.add_child(hdr)
+		for id in GameState.RECIPES:
+			var rec: Dictionary = GameState.RECIPES[id]
+			if rec.get("cat", "Прочее") != cat:
+				continue
+			var btn := Button.new()
+			btn.focus_mode = Control.FOCUS_NONE
+			btn.add_theme_font_size_override("font_size", 16)
+			var cost_txt := ""
+			for r in rec["cost"]:
+				cost_txt += " %s:%d" % [r, rec["cost"][r]]
+			var t: float = rec.get("time", 0.0)
+			var t_txt := " (%ds)" % int(t) if t > 0.0 else ""
+			btn.text = rec["name"] + "  (" + cost_txt.strip_edges() + ")" + t_txt
+			btn.disabled = not GameState.can_craft(id)
+			var rid: String = id
+			btn.pressed.connect(func() -> void:
+				if GameState.start_craft(rid):
+					_refresh_craft()
+					refresh()
+			)
+			_craft_list.add_child(btn)
 
 
 func _on_died() -> void:

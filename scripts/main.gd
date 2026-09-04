@@ -23,6 +23,16 @@ var _hud: CanvasLayer
 var _rng := RandomNumberGenerator.new()
 var _heights := PackedFloat32Array()
 var _terrain_model: Node3D = null
+# день/ночь и погода
+var _sun: DirectionalLight3D
+var _skymat: ProceduralSkyMaterial
+var _env: Environment
+var _sun_disc: MeshInstance3D
+var _rain: GPUParticles3D
+var _time_of_day := 0.4      # 0..1 (0.5 = полдень)
+var _day_length := 480.0     # секунд на полный цикл
+var _raining := false
+var _weather_timer := 60.0
 # позиции добываемых объектов (для добычи вблизи)
 var _tree_spots: Array = []      # [{pos, index, alive}]
 var _rock_spots: Array = []      # [{pos, index, alive}]
@@ -55,12 +65,14 @@ func _ready() -> void:
 	await get_tree().physics_frame
 	await get_tree().physics_frame
 	_sample_terrain_heights()
+	_build_roads()
 	_build_trees()
 	_build_rocks()
 	_build_ores()
 	_build_grass()
 	_build_monuments()
 	_build_barrels()
+	_build_weather()
 	_spawn_player()
 	_build_hud()
 	_spawn_animals()
@@ -364,6 +376,8 @@ func _build_sky() -> void:
 	env.sky = sky
 	env.ambient_light_source = Environment.AMBIENT_SOURCE_SKY
 	env.ambient_light_energy = 1.0
+	_skymat = skymat
+	_env = env
 	# кинематографичная цветокоррекция: фильмический тонмаппинг + лёгкий bloom
 	env.tonemap_mode = Environment.TONE_MAPPER_FILMIC
 	env.tonemap_exposure = 1.05
@@ -402,6 +416,7 @@ func _build_sky() -> void:
 	sun.directional_shadow_blend_splits = true
 	sun.shadow_normal_bias = 1.2
 	add_child(sun)
+	_sun = sun
 	# видимое солнце в небе (яркий светящийся диск + мягкое гало)
 	var disc := MeshInstance3D.new()
 	var sm := SphereMesh.new()
@@ -411,6 +426,7 @@ func _build_sky() -> void:
 	disc.material_override = _mat(Color(1.0, 0.97, 0.72), Color(1.0, 0.88, 0.4))
 	disc.position = Vector3(160, 130, -260)
 	add_child(disc)
+	_sun_disc = disc
 	var halo := MeshInstance3D.new()
 	var hm := SphereMesh.new()
 	hm.radius = 30.0
@@ -427,6 +443,72 @@ func _color_noise(x: float, z: float) -> float:
 	var n := sin(x * 0.09 + 1.7) * cos(z * 0.11 + 0.6)
 	var n2 := sin(x * 0.21 + 0.4) * sin(z * 0.19 + 2.1)
 	return clampf(0.5 + 0.35 * n + 0.15 * n2, 0.0, 1.0)
+
+
+func _build_weather() -> void:
+	# дождь: частицы-капли вокруг игрока
+	_rain = GPUParticles3D.new()
+	var mat := ParticleProcessMaterial.new()
+	mat.emission_shape = ParticleProcessMaterial.EMISSION_SHAPE_BOX
+	mat.emission_box_extents = Vector3(60, 1, 60)
+	mat.direction = Vector3(0, -1, 0)
+	mat.spread = 6.0
+	mat.initial_velocity_min = 22.0
+	mat.initial_velocity_max = 30.0
+	mat.gravity = Vector3(0, -35, 0)
+	mat.scale_min = 0.06
+	mat.scale_max = 0.12
+	_rain.process_material = mat
+	_rain.amount = 1400
+	_rain.lifetime = 1.1
+	_rain.emitting = false
+	# капля — тонкая вытянутая призма
+	var drop := ArrayMesh.new()
+	var db := BoxMesh.new()
+	db.size = Vector3(0.03, 0.55, 0.03)
+	drop.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, db.get_mesh_arrays())
+	_rain.draw_pass_1 = drop
+	var rm := _mat(Color(0.62, 0.72, 0.86, 0.5))
+	rm.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	_rain.material_override = rm
+	_rain.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	add_child(_rain)
+
+
+func _update_day_night(delta: float) -> void:
+	_time_of_day = fmod(_time_of_day + delta / _day_length, 1.0)
+	var elev := sin(_time_of_day * TAU - PI * 0.5)  # -1 ночь .. 1 день
+	# плавный фактор дневного света (с рассветом/закатом)
+	var dl := clampf((elev + 0.12) / 0.28, 0.0, 1.0)
+	if _sun:
+		_sun.rotation_degrees = Vector3(-90.0 + (1.0 - dl) * 78.0, 32.0, 0.0)
+		_sun.light_energy = lerpf(0.06, 1.5, dl)
+		_sun.light_color = Color(0.4, 0.5, 0.72).lerp(Color(1.0, 0.93, 0.8), dl)
+	if _skymat:
+		_skymat.sky_top_color = Color(0.02, 0.03, 0.09).lerp(Color(0.25, 0.48, 0.82), dl)
+		_skymat.sky_horizon_color = Color(0.12, 0.15, 0.24).lerp(Color(0.74, 0.82, 0.9), dl)
+		_skymat.ground_bottom_color = Color(0.06, 0.06, 0.07).lerp(Color(0.3, 0.27, 0.22), dl)
+		_skymat.ground_horizon_color = Color(0.15, 0.17, 0.22).lerp(Color(0.62, 0.62, 0.56), dl)
+	if _env:
+		# дождь приглушает свет и делает картинку холоднее
+		var rain_dark := 0.6 if _raining else 1.0
+		_env.fog_light_color = Color(0.18, 0.22, 0.32).lerp(Color(0.62, 0.72, 0.84), dl) * rain_dark
+		_env.ambient_light_energy = lerpf(0.35, 1.0, dl) * rain_dark
+	if _sun_disc and _player and _sun_disc.is_inside_tree():
+		# видимое солнце следует за направлением света
+		var dir := -_sun.global_transform.basis.z
+		_sun_disc.global_position = _player.global_position + dir * 400.0
+
+
+func _update_weather(delta: float) -> void:
+	_weather_timer -= delta
+	if _weather_timer <= 0.0:
+		_raining = not _raining
+		_weather_timer = randf_range(50.0, 110.0)
+		if _rain:
+			_rain.emitting = _raining
+	if _rain and _rain.is_inside_tree():
+		_rain.global_position = _player.global_position + Vector3(0, 20, 0) if _player else Vector3(0, 20, 0)
 
 
 func _build_ground() -> void:
@@ -476,6 +558,49 @@ func _sample_terrain_heights() -> void:
 	for i in range(_heights.size()):
 		if _heights[i] < -1e8:
 			_heights[i] = 0.0
+
+
+func _add_ribbon(ax: float, az: float, bx: float, bz: float, width: float, color: Color, y_off: float) -> void:
+	# полоса (дорога/река), повторяющая рельеф
+	var dir := Vector3(bx - ax, 0, bz - az).normalized()
+	var normal := Vector3(-dir.z, 0, dir.x)
+	var steps := 96
+	var verts := PackedVector3Array()
+	var cols := PackedColorArray()
+	var idx := PackedInt32Array()
+	for i in range(steps + 1):
+		var t := float(i) / steps
+		var px := lerpf(ax, bx, t)
+		var pz := lerpf(az, bz, t)
+		var h := _surface_height(px, pz) + y_off
+		var c := Vector3(px, h, pz)
+		verts.append(c + normal * (width * 0.5))
+		verts.append(c - normal * (width * 0.5))
+		cols.append(color)
+		cols.append(color)
+	for i in range(steps):
+		var a := i * 2
+		idx.append_array([a, a + 1, a + 2, a + 1, a + 3, a + 2])
+	var mesh := ArrayMesh.new()
+	var arrays := []
+	arrays.resize(Mesh.ARRAY_MAX)
+	arrays[Mesh.ARRAY_VERTEX] = verts
+	arrays[Mesh.ARRAY_COLOR] = cols
+	arrays[Mesh.ARRAY_INDEX] = idx
+	mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arrays)
+	var mi := MeshInstance3D.new()
+	mi.mesh = mesh
+	mi.material_override = _vertex_color_material()
+	mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	add_child(mi)
+
+
+func _build_roads() -> void:
+	# река через карту
+	_add_ribbon(-520.0, 80.0, 520.0, -120.0, 16.0, Color(0.2, 0.4, 0.55), -0.5)
+	# грунтовые дороги
+	_add_ribbon(-520.0, -260.0, 520.0, 260.0, 7.0, Color(0.42, 0.36, 0.26), 0.05)
+	_add_ribbon(-300.0, -520.0, 300.0, 520.0, 6.0, Color(0.4, 0.34, 0.25), 0.05)
 
 
 func _raster_tri(a: Vector3, b: Vector3, c: Vector3, n: int) -> void:
@@ -1198,6 +1323,8 @@ func _place_building(kind: String, origin: Vector3, look_dir: Vector3, rot: floa
 var _ghost: Node3D = null
 
 func _process(delta: float) -> void:
+	_update_day_night(delta)
+	_update_weather(delta)
 	if not GameState.build_mode:
 		if _ghost:
 			_ghost.queue_free()
