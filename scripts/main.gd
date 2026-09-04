@@ -5,7 +5,7 @@ const PlayerScr := preload("res://scripts/player.gd")
 const AnimalScr := preload("res://scripts/animal.gd")
 const HudScr := preload("res://scripts/hud.gd")
 
-const TERRAIN_N := 128        # ячеек на сторону
+const TERRAIN_N := 256        # ячеек на сторону (4 м на ячейку — детальный рельеф)
 const TERRAIN_SIZE := 1024.0  # метров
 const TERRAIN_CELL := TERRAIN_SIZE / float(TERRAIN_N)
 const HALF := TERRAIN_SIZE * 0.5
@@ -213,6 +213,17 @@ func _vertex_color_material() -> StandardMaterial3D:
 	return m
 
 
+func _terrain_material() -> StandardMaterial3D:
+	# освещённый рельеф: вершинные цвета + солнце + тени (глубина, а не плоское «мыло»)
+	var m := StandardMaterial3D.new()
+	m.vertex_color_use_as_albedo = true
+	m.albedo_color = Color.WHITE
+	m.roughness = 1.0
+	m.metallic = 0.0
+	m.cull_mode = BaseMaterial3D.CULL_DISABLED
+	return m
+
+
 # ---------- окружение ----------
 
 func _build_sky() -> void:
@@ -230,7 +241,7 @@ func _build_sky() -> void:
 	env.ambient_light_energy = 1.0
 	env.fog_enabled = true
 	env.fog_light_color = Color(0.6, 0.7, 0.8)
-	env.fog_density = 0.003
+	env.fog_density = 0.002
 	env.fog_sky_affect = 0.4
 	var we := WorldEnvironment.new()
 	we.environment = env
@@ -238,8 +249,10 @@ func _build_sky() -> void:
 
 	var sun := DirectionalLight3D.new()
 	sun.rotation_degrees = Vector3(-50, 40, 0)
-	sun.light_energy = 1.3
+	sun.light_energy = 1.4
 	sun.shadow_enabled = true
+	sun.directional_shadow_max_distance = 200.0
+	sun.directional_shadow_blend_splits = true
 	add_child(sun)
 	var disc := MeshInstance3D.new()
 	var sm := SphereMesh.new()
@@ -261,18 +274,29 @@ func _build_ground() -> void:
 			_heights[z * n + x] = _ground_height(wx, wz)
 
 	var verts := PackedVector3Array()
+	var norms := PackedVector3Array()
 	var cols := PackedColorArray()
 	var idx := PackedInt32Array()
-	var grass := Color(0.22, 0.42, 0.16)
-	var dark := Color(0.18, 0.34, 0.13)
-	var rock := Color(0.4, 0.4, 0.42)
-	var snow := Color(0.9, 0.92, 0.95)
+	var grass := Color(0.24, 0.46, 0.18)
+	var dark := Color(0.19, 0.36, 0.14)
+	var rock := Color(0.42, 0.42, 0.45)
+	var snow := Color(0.92, 0.94, 0.97)
 	for z in range(n):
 		for x in range(n):
 			var wx := -HALF + x * TERRAIN_CELL
 			var wz := -HALF + z * TERRAIN_CELL
 			var h := _heights[z * n + x]
 			verts.append(Vector3(wx, h, wz))
+			# нормаль из градиента высоты (соседние ячейки сетки)
+			var x0 := clampi(x - 1, 0, n - 1)
+			var x1 := clampi(x + 1, 0, n - 1)
+			var z0 := clampi(z - 1, 0, n - 1)
+			var z1 := clampi(z + 1, 0, n - 1)
+			var dxh := _heights[z * n + x1] - _heights[z * n + x0]
+			var dzh := _heights[z1 * n + x] - _heights[z0 * n + x]
+			var normal := Vector3(-dxh, 2.0 * TERRAIN_CELL, -dzh).normalized()
+			norms.append(normal)
+			var slope := 1.0 - normal.y  # 0 = ровно, 1 = отвесно
 			var c := grass
 			if h > 9.0:
 				c = snow
@@ -282,7 +306,11 @@ func _build_ground() -> void:
 				c = grass
 			else:
 				c = dark
-			cols.append(c.lightened(_rng.randf_range(-0.04, 0.04)))
+			# крутые склоны переходят в скалу (как в Rust)
+			if slope > 0.30:
+				c = c.lerp(rock, clampf((slope - 0.30) / 0.40, 0.0, 1.0))
+			# лёгкая вариация тона, чтобы не было однородного «мыла»
+			cols.append(c.lightened(_rng.randf_range(-0.05, 0.05)))
 	for z in range(TERRAIN_N):
 		for x in range(TERRAIN_N):
 			var i0 := z * n + x
@@ -295,12 +323,13 @@ func _build_ground() -> void:
 	var arrays := []
 	arrays.resize(Mesh.ARRAY_MAX)
 	arrays[Mesh.ARRAY_VERTEX] = verts
+	arrays[Mesh.ARRAY_NORMAL] = norms
 	arrays[Mesh.ARRAY_COLOR] = cols
 	arrays[Mesh.ARRAY_INDEX] = idx
 	mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arrays)
 	var mi := MeshInstance3D.new()
 	mi.mesh = mesh
-	mi.material_override = _vertex_color_material()
+	mi.material_override = _terrain_material()
 	add_child(mi)
 
 	# страховочная коллизия внизу
@@ -387,8 +416,8 @@ func _build_grass() -> void:
 	var mm := MultiMesh.new()
 	mm.transform_format = MultiMesh.TRANSFORM_3D
 	mm.mesh = mesh
-	mm.instance_count = 500
-	for i in range(500):
+	mm.instance_count = 2500
+	for i in range(2500):
 		var pos := _random_spot(8.0)
 		var s := _rng.randf_range(0.5, 1.4)
 		var t := Transform3D(Basis(Vector3.UP, _rng.randf() * TAU), pos)
@@ -596,74 +625,68 @@ func _on_animal_died(kind: int) -> void:
 # ---------- добыча ресурсов ----------
 
 func _harvest(origin: Vector3, look_dir: Vector3) -> String:
-	# ищем ближайший объект в радиусе 4.5 м перед игроком
-	var best := ""
+	# ищем ближайший объект ПЕРЕД игроком в радиусе 4.5 м
+	var best_kind := ""
+	var best_spot: Dictionary = {}
 	var best_d := 4.5
-	# деревья
 	for t in _tree_spots:
-		if not t["alive"]:
-			continue
-		var d: float = (t["pos"] - origin).length()
-		if d < best_d:
-			best_d = d
-			best = "tree"
-	# камни
+		if t["alive"] and _ahead(t["pos"], origin, look_dir, best_d):
+			var d: float = (t["pos"] - origin).length()
+			if d < best_d:
+				best_d = d
+				best_kind = "tree"
+				best_spot = t
 	for r in _rock_spots:
-		if not r["alive"]:
-			continue
-		var d: float = (r["pos"] - origin).length()
-		if d < best_d:
-			best_d = d
-			best = "stone"
-	# руды
+		if r["alive"] and _ahead(r["pos"], origin, look_dir, best_d):
+			var d: float = (r["pos"] - origin).length()
+			if d < best_d:
+				best_d = d
+				best_kind = "stone"
+				best_spot = r
 	for o in _ore_spots:
-		if not o["alive"]:
-			continue
-		var d: float = (o["pos"] - origin).length()
-		if d < best_d:
-			best_d = d
-			best = "ore"
-	if best == "":
+		if o["alive"] and _ahead(o["pos"], origin, look_dir, best_d):
+			var d: float = (o["pos"] - origin).length()
+			if d < best_d:
+				best_d = d
+				best_kind = "ore"
+				best_spot = o
+	if best_kind == "":
 		return ""
 
-	match best:
+	best_spot["alive"] = false
+	match best_kind:
 		"tree":
-			for t in _tree_spots:
-				if t["alive"] and (t["pos"] - origin).length() <= best_d + 0.1:
-					t["alive"] = false
-					var amt := 60 if t.get("big", false) else 25
-					GameState.add_resource("wood", int(amt * GameState.harvest_bonus()))
-					_remove_resource(t, _trees_mm)
-					if _hud:
-						_hud.refresh()
-					return "wood"
+			var amt := 60 if best_spot.get("big", false) else 25
+			GameState.add_resource("wood", int(amt * GameState.harvest_bonus()))
+			_remove_resource(best_spot, _trees_mm)
 		"stone":
-			for r in _rock_spots:
-				if r["alive"] and (r["pos"] - origin).length() <= best_d + 0.1:
-					r["alive"] = false
-					GameState.add_resource("stone", int(20.0 * GameState.mining_bonus()))
-					_remove_resource(r, _rocks_mm)
-					if _hud:
-						_hud.refresh()
-					return "stone"
+			GameState.add_resource("stone", int(20.0 * GameState.mining_bonus()))
+			_remove_resource(best_spot, _rocks_mm)
 		"ore":
-			for o in _ore_spots:
-				if o["alive"] and (o["pos"] - origin).length() <= best_d + 0.1:
-					o["alive"] = false
-					if o["kind"] == 0:
-						GameState.add_resource("sulfur", int(15.0 * GameState.mining_bonus()))
-					elif o["kind"] == 1:
-						GameState.add_resource("iron", int(12.0 * GameState.mining_bonus()))
-					elif o["kind"] == 2:
-						GameState.add_resource("stone", int(20.0 * GameState.mining_bonus()))
-					else:
-						GameState.add_resource("metal", int(10.0 * GameState.mining_bonus()))
-						GameState.add_resource("scrap", int(3.0 * GameState.mining_bonus()))
-					_remove_resource(o, null)
-					if _hud:
-						_hud.refresh()
-					return "ore"
-	return ""
+			if best_spot["kind"] == 0:
+				GameState.add_resource("sulfur", int(15.0 * GameState.mining_bonus()))
+			elif best_spot["kind"] == 1:
+				GameState.add_resource("iron", int(12.0 * GameState.mining_bonus()))
+			elif best_spot["kind"] == 2:
+				GameState.add_resource("stone", int(20.0 * GameState.mining_bonus()))
+			else:
+				GameState.add_resource("metal", int(10.0 * GameState.mining_bonus()))
+				GameState.add_resource("scrap", int(3.0 * GameState.mining_bonus()))
+			_remove_resource(best_spot, null)
+	if _hud:
+		_hud.refresh()
+	return best_kind
+
+
+func _ahead(pos: Vector3, origin: Vector3, look_dir: Vector3, max_d: float) -> bool:
+	var to: Vector3 = pos - origin
+	to.y = 0.0
+	var d: float = to.length()
+	if d > max_d:
+		return false
+	if d < 0.05:
+		return true
+	return to.normalized().dot(look_dir) > 0.3
 
 
 func _remove_resource(spot: Dictionary, mm: MultiMesh) -> void:
