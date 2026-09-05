@@ -956,26 +956,6 @@ func _build_monuments() -> void:
 			"parking": _build_parking(mp.x, mp.z)
 			"factory": _build_factory(mp.x, mp.z)
 			"npp": _build_npp(mp.x, mp.z)
-	_build_volcano()
-
-
-func _build_volcano() -> void:
-	# скачанный реальный рельеф — вулкан (г. Фудзи, спутниковый снимок, ~10 км в оригинале).
-	# Ставим уменьшенным как заметный ландшафтный ориентир в углу карты.
-	var tx := -360.0
-	var tz := -360.0
-	var s := 0.0385  # ~400 м в поперечнике
-	var y := _surface_height(tx, tz)
-	var model: Node3D = load("res://models/map_fuji.glb").instantiate()
-	model.scale = Vector3.ONE * s
-	# перецентровка по известным габаритам модели (центр XZ и основание Y)
-	model.position = Vector3(tx + 165.16 * s, y + 864.698 * s, tz - 301.03 * s)
-	add_child(model)
-	_force_opaque(model)
-	# ящики с лутом у подножия вулкана
-	_add_lootbox(tx + 70.0, tz + 70.0)
-	_add_lootbox(tx - 60.0, tz - 50.0)
-	_add_lootbox(tx + 40.0, tz - 70.0)
 
 
 func _add_monument_model(path: String, x: float, z: float) -> Node3D:
