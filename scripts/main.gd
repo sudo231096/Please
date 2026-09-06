@@ -10,12 +10,16 @@ const TERRAIN_SIZE := 1024.0  # метров
 const TERRAIN_CELL := TERRAIN_SIZE / float(TERRAIN_N)
 const HALF := TERRAIN_SIZE * 0.5
 
-# горы: [x, z, высота, радиус] (чуть ниже, чем раньше)
+# остров: радиус суши и уровень воды
+const ISLAND_R := 430.0
+const WATER_LEVEL := -1.0
+
+# горы: [x, z, высота, радиус] (внутри острова)
 const MOUNTAINS := [
-	[200.0, 200.0, 13.0, 60.0],
-	[-280.0, -150.0, 16.0, 70.0],
-	[120.0, -320.0, 11.0, 55.0],
-	[-100.0, 300.0, 14.0, 65.0],
+	[180.0, 180.0, 15.0, 60.0],
+	[-240.0, -120.0, 18.0, 70.0],
+	[100.0, -280.0, 13.0, 55.0],
+	[-80.0, 260.0, 16.0, 65.0],
 ]
 
 var _player: CharacterBody3D
@@ -42,12 +46,12 @@ var _puddles: Array = []         # [{x, z, r}]
 var _trees_mm: MultiMesh
 var _rocks_mm: MultiMesh
 
-# монументы (как в Rust): склад, парковка, завод, АЭС
+# монументы (как в Rust): склад, парковка, завод, АЭС — внутри острова
 const MONUMENTS := [
-	{"kind": "warehouse", "pos": Vector3(-300.0, 0, -250.0)},
-	{"kind": "parking", "pos": Vector3(320.0, 0, -180.0)},
-	{"kind": "factory", "pos": Vector3(-260.0, 0, 320.0)},
-	{"kind": "npp", "pos": Vector3(310.0, 0, 290.0)},
+	{"kind": "warehouse", "pos": Vector3(-260.0, 0, -220.0)},
+	{"kind": "parking", "pos": Vector3(280.0, 0, -150.0)},
+	{"kind": "factory", "pos": Vector3(-230.0, 0, 280.0)},
+	{"kind": "npp", "pos": Vector3(260.0, 0, 250.0)},
 ]
 
 
@@ -60,6 +64,7 @@ func _ready() -> void:
 	_build_puddles()
 	_build_sky()
 	_build_ground()
+	_build_water()
 	_build_roads()
 	_build_trees()
 	_build_rocks()
@@ -73,33 +78,49 @@ func _ready() -> void:
 	_spawn_animals()
 
 
-# ---------- высота рельефа ----------
+# ---------- высота рельефа (остров) ----------
+
+func _island_mask(x: float, z: float) -> float:
+	# 1 в центре острова, 0 далеко в море (плавный берег)
+	var d := sqrt(x * x + z * z)
+	return clampf(1.0 - smoothstep(ISLAND_R - 70.0, ISLAND_R + 15.0, d), 0.0, 1.0)
+
+
+func _on_land(x: float, z: float) -> bool:
+	# достаточно ли высоко над водой, чтобы здесь что-то стояло
+	return _surface_height(x, z) > WATER_LEVEL + 0.3
+
 
 func _ground_height(x: float, z: float) -> float:
+	var mask := _island_mask(x, z)
 	var h := 0.0
 	# многослойный шум — холмистая местность как в Rust
-	h += 2.5 * sin(x * 0.006 + 1.3) * cos(z * 0.007 + 0.7)
-	h += 1.5 * sin(x * 0.013 + 0.5) * sin(z * 0.011 + 2.1)
-	h += 0.8 * sin(x * 0.027 + 0.2) * cos(z * 0.023 + 1.6)
-	h += 0.4 * sin(x * 0.051 + 3.0) * sin(z * 0.047 + 0.9)
+	h += 4.0 * sin(x * 0.006 + 1.3) * cos(z * 0.007 + 0.7)
+	h += 2.2 * sin(x * 0.013 + 0.5) * sin(z * 0.011 + 2.1)
+	h += 1.0 * sin(x * 0.027 + 0.2) * cos(z * 0.023 + 1.6)
+	h += 0.5 * sin(x * 0.051 + 3.0) * sin(z * 0.047 + 0.9)
 	# мелкие бугры и неровности
-	h += 0.5 * sin(x * 0.09 + 1.1) * cos(z * 0.083 + 0.3)
-	h += 0.25 * sin(x * 0.17 + 0.7) * sin(z * 0.19 + 2.3)
+	h += 0.6 * sin(x * 0.09 + 1.1) * cos(z * 0.083 + 0.3)
+	h += 0.3 * sin(x * 0.17 + 0.7) * sin(z * 0.19 + 2.3)
 	for p in MOUNTAINS:
 		var dx: float = x - p[0]
 		var dz: float = z - p[1]
 		var d2: float = dx * dx + dz * dz
 		h += p[2] * exp(-d2 / (2.0 * p[3] * p[3]))
-	# лужи: плавные углубления, заполненные водой
+	# лужи: плавные углубления на суше (небольшие озёра)
 	for p in _puddles:
 		var dx: float = x - p["x"]
 		var dz: float = z - p["z"]
 		var d: float = sqrt(dx * dx + dz * dz)
 		var r: float = p["r"]
 		if d < r:
-			var k := 1.0 - d / r  # 1 в центре, 0 на краю
-			h = lerpf(h, -0.7, k * 0.75)
-	return h
+			var k := 1.0 - d / r
+			h = lerpf(h, -1.4, k * 0.7)
+	# суша: поднимаем базовый рельеф и умножаем на маску острова
+	var land := (h + 7.0) * mask
+	# море за берегом уходит на морское дно
+	var seafloor := (WATER_LEVEL - 6.0) * (1.0 - mask)
+	return land + seafloor
 
 
 func _surface_height(x: float, z: float) -> float:
@@ -510,8 +531,25 @@ func _update_weather(delta: float) -> void:
 		_rain.global_position = _player.global_position + Vector3(0, 20, 0) if _player else Vector3(0, 20, 0)
 
 
+func _build_water() -> void:
+	# море вокруг острова — большая полупрозрачная водная плоскость
+	var plane := PlaneMesh.new()
+	plane.size = Vector2(TERRAIN_SIZE * 2.5, TERRAIN_SIZE * 2.5)
+	var w := MeshInstance3D.new()
+	w.mesh = plane
+	var mat := StandardMaterial3D.new()
+	mat.albedo_color = Color(0.09, 0.33, 0.52, 0.78)
+	mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	mat.roughness = 0.05
+	mat.metallic = 0.15
+	w.material_override = mat
+	w.position = Vector3(0, WATER_LEVEL, 0)
+	w.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	add_child(w)
+
+
 func _build_ground() -> void:
-	# процедурный холмистый рельеф (единый источник высоты _ground_height —
+	# процедурный остров (единый источник высоты _ground_height —
 	# игрок, деревья, трава и камни ходят строго по нему, без проваливания и «парения»)
 	var n := TERRAIN_N + 1
 	_heights.resize(n * n)
@@ -525,16 +563,19 @@ func _build_ground() -> void:
 	var norms := PackedVector3Array()
 	var cols := PackedColorArray()
 	var idx := PackedInt32Array()
-	var grass := Color(0.34, 0.5, 0.22)
+	var grass := Color(0.32, 0.5, 0.2)
 	var dark := Color(0.24, 0.4, 0.16)
 	var dirt := Color(0.47, 0.38, 0.25)
+	var sand := Color(0.78, 0.72, 0.52)
 	var rock := Color(0.42, 0.42, 0.46)
 	var snow := Color(0.93, 0.95, 0.98)
+	var seabed := Color(0.45, 0.4, 0.3)
 	for z in range(n):
 		for x in range(n):
 			var wx := -HALF + x * TERRAIN_CELL
 			var wz := -HALF + z * TERRAIN_CELL
 			var h := _heights[z * n + x]
+			var mask := _island_mask(wx, wz)
 			verts.append(Vector3(wx, h, wz))
 			# нормаль из градиента высоты (соседние ячейки сетки)
 			var x0 := clampi(x - 1, 0, n - 1)
@@ -548,22 +589,28 @@ func _build_ground() -> void:
 			var slope := 1.0 - normal.y  # 0 = ровно, 1 = отвесно
 			var pf := _puddle_factor(wx, wz)
 			var c := grass
-			if pf > 0.12:
-				# вода в луже
+			if h < WATER_LEVEL:
+				# морское дно
+				c = seabed.lerp(Color(0.5, 0.5, 0.44), clampf(-h * 0.1, 0.0, 1.0))
+			elif pf > 0.12:
+				# внутренние озёра
 				c = Color(0.2, 0.45, 0.6).lerp(Color(0.35, 0.6, 0.75), pf)
-			elif h > 9.0:
+			elif mask < 0.35:
+				# песчаный берег
+				c = sand
+			elif h > 18.0:
 				c = snow
-			elif h > 5.0:
+			elif h > 10.0:
 				c = rock
-			elif h > 2.0:
+			elif h > 3.0:
 				c = grass
 			else:
 				c = dark
-			# земляные проплешины в низинах
-			if h < 2.5 and pf <= 0.12:
+			# земляные проплешины в низинах (только на суше)
+			if h < 3.5 and h >= WATER_LEVEL and pf <= 0.12 and mask >= 0.35:
 				c = c.lerp(dirt, _color_noise(wx, wz) * 0.5)
 			# крутые склоны переходят в скалу
-			if slope > 0.28 and pf <= 0.12:
+			if slope > 0.28 and h >= WATER_LEVEL and pf <= 0.12:
 				c = c.lerp(rock, clampf((slope - 0.28) / 0.45, 0.0, 1.0))
 			# естественная пятнистость тона
 			var v := _color_noise(wx * 1.7, wz * 1.7 + 9.0)
@@ -639,30 +686,38 @@ func _add_ribbon(ax: float, az: float, bx: float, bz: float, width: float, color
 
 
 func _build_roads() -> void:
-	# река через карту
-	_add_ribbon(-520.0, 80.0, 520.0, -120.0, 16.0, Color(0.2, 0.4, 0.55), -0.5)
-	# грунтовые дороги
-	_add_ribbon(-520.0, -260.0, 520.0, 260.0, 7.0, Color(0.42, 0.36, 0.26), 0.05)
-	_add_ribbon(-300.0, -520.0, 300.0, 520.0, 6.0, Color(0.4, 0.34, 0.25), 0.05)
+	# грунтовые дороги: от центра к каждому монументу + главная магистраль
+	var center := Vector2.ZERO
+	for m in MONUMENTS:
+		_add_ribbon(center.x, center.y, m["pos"].x, m["pos"].z, 6.0, Color(0.42, 0.36, 0.26), 0.08)
+	_add_ribbon(-380.0, 60.0, 380.0, -60.0, 7.0, Color(0.4, 0.34, 0.25), 0.08)
+	_add_ribbon(-60.0, -380.0, 60.0, 380.0, 7.0, Color(0.4, 0.34, 0.25), 0.08)
 
 
 func _random_spot(min_r: float) -> Vector3:
-	var ang := _rng.randf() * TAU
-	var r := _rng.randf_range(min_r, HALF - 20.0)
-	var x := cos(ang) * r
-	var z := sin(ang) * r
-	return Vector3(x, _surface_height(x, z), z)
+	# случайная точка НА СУШЕ (с отбраковкой точек в море)
+	for attempt in range(60):
+		var ang := _rng.randf() * TAU
+		var r := _rng.randf_range(min_r, ISLAND_R - 30.0)
+		var x := cos(ang) * r
+		var z := sin(ang) * r
+		if _on_land(x, z):
+			return Vector3(x, _surface_height(x, z), z)
+	return Vector3(0, _surface_height(0, 0), 0)
 
 
 func _grid_spot(grid_size: float, jitter: float) -> Vector3:
-	# равномерное распределение по сетке (как в Rust — ресурсы разбросаны по всей карте)
+	# равномерное распределение по сетке, только по суше (как в Rust — ресурсы по всему острову)
 	var cols := int(TERRAIN_SIZE / grid_size)
 	var cell := int(TERRAIN_SIZE / float(cols))
-	var cx := _rng.randi_range(0, cols - 1)
-	var cz := _rng.randi_range(0, cols - 1)
-	var x := -HALF + (cx + 0.5) * cell + _rng.randf_range(-jitter, jitter)
-	var z := -HALF + (cz + 0.5) * cell + _rng.randf_range(-jitter, jitter)
-	return Vector3(x, _surface_height(x, z), z)
+	for attempt in range(60):
+		var cx := _rng.randi_range(0, cols - 1)
+		var cz := _rng.randi_range(0, cols - 1)
+		var x := -HALF + (cx + 0.5) * cell + _rng.randf_range(-jitter, jitter)
+		var z := -HALF + (cz + 0.5) * cell + _rng.randf_range(-jitter, jitter)
+		if _on_land(x, z):
+			return Vector3(x, _surface_height(x, z), z)
+	return Vector3(0, _surface_height(0, 0), 0)
 
 
 # ---------- деревья / камни / руды / трава (MultiMesh — оптимизация) ----------

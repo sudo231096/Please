@@ -231,6 +231,12 @@ func _physics_process(delta: float) -> void:
 	global_position.x = clampf(global_position.x, -500.0, 500.0)
 	global_position.z = clampf(global_position.z, -500.0, 500.0)
 
+	# не пускаем в глубокую воду (берег — граница острова)
+	var water_h := _ground_height()
+	if water_h < -2.0:
+		global_position.x -= wish.x * spd * delta
+		global_position.z -= wish.z * spd * delta
+
 	# прыжок
 	var jump := Input.is_physical_key_pressed(KEY_SPACE)
 	if has_meta("mob_jump") and bool(get_meta("mob_jump")):

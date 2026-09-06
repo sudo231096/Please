@@ -232,6 +232,11 @@ func _physics_process(delta: float) -> void:
 	global_position.z += dir.z * speed * delta
 	global_position.x = clampf(global_position.x, -500.0, 500.0)
 	global_position.z = clampf(global_position.z, -500.0, 500.0)
+	# не выходить за берег (радиальный ограничитель острова)
+	var d := Vector2(global_position.x, global_position.z).length()
+	if d > 420.0:
+		global_position.x *= 420.0 / d
+		global_position.z *= 420.0 / d
 
 	# прилипание к рельефу
 	global_position.y = _ground_height()
