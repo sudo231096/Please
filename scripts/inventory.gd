@@ -227,10 +227,29 @@ func _build_character() -> void:
 	scene.add_child(cam)
 	cam.look_at_from_position(Vector3(0, 0.95, 1.9), Vector3(0, 0.9, 0), Vector3.UP)
 
-	_model = preload("res://scripts/human_model.gd").new()
+	_model = preload("res://models/player.glb").instantiate()
 	scene.add_child(_model)
-	_model.build(GameState.equipped)
+	_model.scale = Vector3.ONE * (1.9 / 47.0)
 	_model.rotation_degrees = Vector3(0, 180, 0)
+	for ap in _model.find_children("*", "AnimationPlayer", true, false):
+		if ap.has_animation("Idle"):
+			ap.play("Idle")
+			break
+	# поставить ногами на центр сцены
+	await get_tree().process_frame
+	await get_tree().process_frame
+	var mn := Vector3(1e9, 1e9, 1e9)
+	for m in _model.find_children("*", "MeshInstance3D", true, false):
+		var aabb: AABB = m.mesh.get_aabb()
+		var t: Transform3D = m.global_transform
+		for i in range(8):
+			var p: Vector3 = aabb.position + Vector3(
+				aabb.size.x if (i & 1) != 0 else 0.0,
+				aabb.size.y if (i & 2) != 0 else 0.0,
+				aabb.size.z if (i & 4) != 0 else 0.0)
+			p = t * p
+			mn = mn.min(p)
+	_model.position += Vector3(0, -mn.y, 0)
 
 
 func _build_grid() -> void:
@@ -542,9 +561,9 @@ func _refresh() -> void:
 				panel.modulate = Color(1.0, 0.9, 0.4)
 		else:
 			panel.modulate = Color(1, 1, 1, 0.3)
-	# персонаж — обновить одежду
+	# персонаж — ригнутая модель (одежда не меняет её геометрию)
 	if _model:
-		_model.build(GameState.equipped)
+		pass
 
 
 func _clear_panel(panel: Panel) -> void:

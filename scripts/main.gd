@@ -29,7 +29,7 @@ var _env: Environment
 var _sun_disc: MeshInstance3D
 var _rain: GPUParticles3D
 var _time_of_day := 0.4      # 0..1 (0.5 = полдень)
-var _day_length := 480.0     # секунд на полный цикл
+var _day_length := 2400.0    # 40 минут на полный цикл (день длится долго, не уходит в серое)
 var _raining := false
 var _weather_timer := 60.0
 # позиции добываемых объектов (для добычи вблизи)
@@ -363,39 +363,40 @@ func _flat_normals(verts: PackedVector3Array, idx: PackedInt32Array) -> PackedVe
 func _build_sky() -> void:
 	var env := Environment.new()
 	env.background_mode = Environment.BG_SKY
+	env.background_color = Color(0.35, 0.55, 0.85)  # запасной синий фон (не серый)
 	var sky := Sky.new()
 	var skymat := ProceduralSkyMaterial.new()
-	# яркое дневное небо с лёгкой дымкой — как в Rust
-	skymat.sky_top_color = Color(0.25, 0.48, 0.82)
-	skymat.sky_horizon_color = Color(0.74, 0.82, 0.9)
+	# яркое дневное небо — глубокий синий верх, светлый горизонт
+	skymat.sky_top_color = Color(0.22, 0.5, 0.88)
+	skymat.sky_horizon_color = Color(0.76, 0.85, 0.95)
 	skymat.ground_bottom_color = Color(0.3, 0.27, 0.22)
-	skymat.ground_horizon_color = Color(0.62, 0.62, 0.56)
+	skymat.ground_horizon_color = Color(0.66, 0.66, 0.6)
 	sky.sky_material = skymat
 	env.sky = sky
 	env.ambient_light_source = Environment.AMBIENT_SOURCE_SKY
-	env.ambient_light_energy = 1.0
+	env.ambient_light_energy = 1.15
 	_skymat = skymat
 	_env = env
-	# кинематографичная цветокоррекция: фильмический тонмаппинг + лёгкий bloom
+	# кинематографичная цветокоррекция: фильмический тонмаппинг + мягкий bloom
 	env.tonemap_mode = Environment.TONE_MAPPER_FILMIC
-	env.tonemap_exposure = 1.05
+	env.tonemap_exposure = 1.08
 	env.glow_enabled = true
-	env.glow_intensity = 0.4
-	env.glow_bloom = 0.12
-	env.glow_hdr_threshold = 1.0
+	env.glow_intensity = 0.35
+	env.glow_bloom = 0.06
+	env.glow_hdr_threshold = 1.1
 	# лёгкая подкрутка насыщенности и контраста
 	env.adjustment_enabled = true
-	env.adjustment_saturation = 0.95
-	env.adjustment_contrast = 1.04
-	# атмосферная дымка на дальности
+	env.adjustment_saturation = 1.02
+	env.adjustment_contrast = 1.06
+	# лёгкая дымка на дальности — НЕ серый туман (почти не трогает небо)
 	env.fog_enabled = true
-	env.fog_light_color = Color(0.62, 0.72, 0.84)
-	env.fog_density = 0.0014
-	env.fog_sky_affect = 0.55
+	env.fog_light_color = Color(0.66, 0.76, 0.88)
+	env.fog_density = 0.001
+	env.fog_sky_affect = 0.1
 	# SSAO — затенение в углублениях и у оснований объектов (глубина, как в Rust)
 	env.ssao_enabled = true
 	env.ssao_radius = 1.2
-	env.ssao_intensity = 1.3
+	env.ssao_intensity = 1.2
 	env.ssao_power = 2.0
 	env.ssao_detail = 0.5
 	env.ssao_horizon = 0.06
@@ -406,11 +407,11 @@ func _build_sky() -> void:
 
 	var sun := DirectionalLight3D.new()
 	sun.rotation_degrees = Vector3(-42, 32, 0)
-	sun.light_color = Color(1.0, 0.93, 0.8)  # тёплый солнечный свет
-	sun.light_energy = 1.5
+	sun.light_color = Color(1.0, 0.95, 0.85)  # тёплый солнечный свет
+	sun.light_energy = 1.6
 	sun.shadow_enabled = true
 	sun.directional_shadow_mode = DirectionalLight3D.SHADOW_PARALLEL_4_SPLITS
-	sun.directional_shadow_max_distance = 150.0
+	sun.directional_shadow_max_distance = 160.0
 	sun.directional_shadow_blend_splits = true
 	sun.shadow_normal_bias = 1.2
 	add_child(sun)
