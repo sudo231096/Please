@@ -500,6 +500,42 @@ func is_equipped(id: String) -> bool:
 	return equipped.values().has(id)
 
 
+# --- операции инвентаря: использовать / выбросить / разделить ---
+
+## Можно ли предмет «использовать» (съесть, выпить, вылечиться)
+func is_usable(id: String) -> bool:
+	return id in ["meat", "water", "bandage"]
+
+
+## Использовать один предмет. Возвращает текст результата ("" — нельзя)
+func use_item(id: String) -> String:
+	if count(id) <= 0:
+		return ""
+	match id:
+		"meat":
+			eat()
+			return "Съедено мясо: +30 голода"
+		"water":
+			drink()
+			return "Выпита вода: +40 жажды"
+		"bandage":
+			if hp >= max_hp:
+				return "Здоровье уже полное"
+			remove_item("bandage", 1)
+			hp = minf(max_hp, hp + 30.0)
+			return "Использован бинт: +30 здоровья"
+	return ""
+
+
+## Выбросить n предметов из инвентаря
+func drop_item(id: String, n: int) -> bool:
+	var have: int = count(id)
+	if have <= 0:
+		return false
+	var take: int = mini(n, have)
+	return remove_item(id, take)
+
+
 # --- сохранение инвентаря ---
 
 func save_inventory() -> void:
@@ -757,6 +793,11 @@ func auto_assign_hotbar(id: String) -> void:
 
 
 # отменить крафт в очереди (вернуть ресурсы)
+## Текущая очередь крафта (только для чтения UI)
+func craft_queue() -> Array:
+	return _crafting
+
+
 func cancel_craft(index: int) -> bool:
 	if index < 0 or index >= _crafting.size():
 		return false
