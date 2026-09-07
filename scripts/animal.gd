@@ -101,10 +101,16 @@ func _cyl(r: float, h: float, color: Color, pos: Vector3) -> MeshInstance3D:
 func _build() -> void:
 	var col := CollisionShape3D.new()
 	var cs := CapsuleShape3D.new()
-	cs.radius = 0.5
-	cs.height = 1.2
+	if kind == 3:
+		# медведь крупный — коллизия под новый размер (~6 м в длину, высокий)
+		cs.radius = 1.1
+		cs.height = 2.6
+		col.position = Vector3(0, 1.3, 0)
+	else:
+		cs.radius = 0.5
+		cs.height = 1.2
+		col.position = Vector3(0, 0.6, 0)
 	col.shape = cs
-	col.position = Vector3(0, 0.6, 0)
 	add_child(col)
 
 	match kind:
@@ -126,9 +132,10 @@ func _build() -> void:
 
 func _build_bear() -> void:
 	# скачанная модель медведя (с автоподгонкой по габаритам)
+	# увеличен ~в 1.8 раза (было 3.5 м) — пропорции сохраняются (равномерный масштаб)
 	_model = preload("res://models/bear.glb").instantiate()
 	add_child(_model)
-	_fit_model(_model, 3.5)  # крупный медведь
+	_fit_model(_model, 6.3)  # очень крупный медведь
 
 
 func _fit_model(m: Node3D, target_height: float) -> void:

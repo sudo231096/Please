@@ -44,6 +44,7 @@ var _barrel_spots: Array = []    # [{pos, alive, node}]
 var _loot_spots: Array = []      # [{pos, opened, node, lid}]
 var _puddles: Array = []         # [{x, z, r}]
 var _trees_mm: MultiMesh
+var _trees_mm_list: Array = []   # MultiMesh для каждого вида дерева
 var _rocks_mm: MultiMesh
 
 # монументы (как в Rust): склад, парковка, завод, АЭС — внутри острова
@@ -196,29 +197,89 @@ func _add_tri(verts: PackedVector3Array, cols: PackedColorArray, idx: PackedInt3
 	idx.append_array([base, base + 1, base + 2])
 
 
-func _make_tree_mesh() -> ArrayMesh:
-	var verts := PackedVector3Array()
-	var cols := PackedColorArray()
-	var idx := PackedInt32Array()
-	var brown := Color(0.45, 0.32, 0.17)
-	var green := Color(0.22, 0.46, 0.16)
-	# ствол (коробка)
-	var bs := Vector3(0.16, 1.1, 0.16)
-	var bc := Vector3(0, 0.55, 0)
-	_add_box(verts, cols, idx, bc, bs, brown)
-	# три яруса хвои (конусы)
-	_add_cone(verts, cols, idx, 0.95, 0.85, 1.3, green)
-	_add_cone(verts, cols, idx, 1.75, 0.62, 1.1, green.lightened(0.05))
-	_add_cone(verts, cols, idx, 2.45, 0.4, 0.9, green.lightened(0.1))
-	var am := ArrayMesh.new()
+func _surface_arrays(verts: PackedVector3Array, cols: PackedColorArray, idx: PackedInt32Array, uv_scale: float) -> Array:
+	# собрать массивы поверхности с UV (планарная развёртка — для тайлинга текстур)
+	var uvs := PackedVector2Array()
+	for v in verts:
+		# развёртка по «цилиндру» вокруг Y: X по окружности, Y по высоте
+		uvs.append(Vector2((atan2(v.z, v.x) / TAU + 0.5) * uv_scale, -v.y * uv_scale * 0.5))
 	var arrays := []
 	arrays.resize(Mesh.ARRAY_MAX)
 	arrays[Mesh.ARRAY_VERTEX] = verts
 	arrays[Mesh.ARRAY_NORMAL] = _flat_normals(verts, idx)
 	arrays[Mesh.ARRAY_COLOR] = cols
+	arrays[Mesh.ARRAY_TEX_UV] = uvs
 	arrays[Mesh.ARRAY_INDEX] = idx
-	am.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arrays)
+	return arrays
+
+
+# вид 0 — ель (конусы хвои), вид 1 — лиственное (шар кроны), вид 2 — сухое/мёртвое дерево
+func _make_tree_mesh(species: int = 0) -> ArrayMesh:
+	var am := ArrayMesh.new()
+	# --- surface 0: СТВОЛ (текстура коры) ---
+	var tv := PackedVector3Array()
+	var tc := PackedColorArray()
+	var ti := PackedInt32Array()
+	var brown := Color(0.62, 0.5, 0.36)
+	match species:
+		1:
+			# лиственное: толстый ствол
+			_add_box(tv, tc, ti, Vector3(0, 0.8, 0), Vector3(0.24, 1.6, 0.24), brown)
+			# пара ветвей
+			_add_box(tv, tc, ti, Vector3(0.3, 1.5, 0), Vector3(0.5, 0.09, 0.09), brown)
+			_add_box(tv, tc, ti, Vector3(-0.3, 1.7, 0), Vector3(0.5, 0.09, 0.09), brown)
+		2:
+			# сухое дерево: кривой ствол + голые ветви
+			_add_box(tv, tc, ti, Vector3(0, 1.0, 0), Vector3(0.2, 2.0, 0.2), brown.darkened(0.25))
+			_add_box(tv, tc, ti, Vector3(0.35, 1.7, 0.1), Vector3(0.7, 0.08, 0.08), brown.darkened(0.3))
+			_add_box(tv, tc, ti, Vector3(-0.32, 2.1, -0.1), Vector3(0.62, 0.07, 0.07), brown.darkened(0.3))
+			_add_box(tv, tc, ti, Vector3(0.15, 2.4, 0.25), Vector3(0.45, 0.06, 0.06), brown.darkened(0.3))
+		_:
+			# ель: тонкий ствол
+			_add_box(tv, tc, ti, Vector3(0, 0.55, 0), Vector3(0.16, 1.1, 0.16), brown)
+	am.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, _surface_arrays(tv, tc, ti, 2.0))
+
+	# --- surface 1: ЛИСТВА (текстура растительности) ---
+	if species != 2:
+		var fv := PackedVector3Array()
+		var fc := PackedColorArray()
+		var fi := PackedInt32Array()
+		var green := Color(0.75, 0.95, 0.7)
+		if species == 1:
+			# лиственное: плотная шапка из нескольких сфер-кластеров
+			_add_sphere_cluster(fv, fc, fi, Vector3(0, 2.1, 0), 0.95, green)
+			_add_sphere_cluster(fv, fc, fi, Vector3(0.5, 1.85, 0.2), 0.62, green.darkened(0.06))
+			_add_sphere_cluster(fv, fc, fi, Vector3(-0.45, 1.9, -0.25), 0.6, green.darkened(0.04))
+			_add_sphere_cluster(fv, fc, fi, Vector3(0.1, 2.5, -0.3), 0.55, green.lightened(0.05))
+		else:
+			# ель: три плотных яруса хвои
+			_add_cone(fv, fc, fi, 0.95, 0.9, 1.35, green)
+			_add_cone(fv, fc, fi, 1.7, 0.68, 1.15, green.darkened(0.05))
+			_add_cone(fv, fc, fi, 2.4, 0.45, 0.95, green.lightened(0.05))
+		am.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, _surface_arrays(fv, fc, fi, 3.0))
 	return am
+
+
+func _add_sphere_cluster(verts: PackedVector3Array, cols: PackedColorArray, idx: PackedInt32Array, center: Vector3, r: float, color: Color) -> void:
+	# низкополигональная сфера-крона (икосферо-подобная, дёшево для мобилы)
+	var rings := 4
+	var segs := 7
+	var base := verts.size()
+	for ring in range(rings + 1):
+		var phi := PI * float(ring) / rings
+		var y := cos(phi) * r
+		var rr := sin(phi) * r
+		for s in range(segs):
+			var th := TAU * float(s) / segs
+			verts.append(center + Vector3(cos(th) * rr, y, sin(th) * rr))
+			cols.append(color)
+	for ring in range(rings):
+		for s in range(segs):
+			var a := base + ring * segs + s
+			var b := base + ring * segs + (s + 1) % segs
+			var c := base + (ring + 1) * segs + s
+			var d := base + (ring + 1) * segs + (s + 1) % segs
+			idx.append_array([a, c, b, b, c, d])
 
 
 func _add_box(verts: PackedVector3Array, cols: PackedColorArray, idx: PackedInt32Array, center: Vector3, size: Vector3, color: Color) -> void:
@@ -354,7 +415,7 @@ func _grass_material() -> StandardMaterial3D:
 
 
 func _terrain_material() -> StandardMaterial3D:
-	# освещённый рельеф: вершинные цвета + солнце + тени (глубина, а не плоское «мыло»)
+	# рельеф с вершинными цветами (биомы), без текстуры — для деревьев/камней
 	var m := StandardMaterial3D.new()
 	m.vertex_color_use_as_albedo = true
 	m.albedo_color = Color.WHITE
@@ -362,6 +423,56 @@ func _terrain_material() -> StandardMaterial3D:
 	m.metallic = 0.0
 	m.transparency = BaseMaterial3D.TRANSPARENCY_DISABLED  # строго непрозрачный
 	m.cull_mode = BaseMaterial3D.CULL_DISABLED
+	return m
+
+
+func _ground_pbr_material() -> StandardMaterial3D:
+	# ЗЕМЛЯ: скачанная PBR-текстура (ambientCG, CC0): Albedo + Normal + Roughness.
+	# Вершинные цвета биомов умножаются на текстуру — детализация + разные зоны.
+	var m := StandardMaterial3D.new()
+	m.albedo_texture = load("res://textures/ground_albedo.jpg")
+	m.normal_enabled = true
+	m.normal_texture = load("res://textures/ground_normal.jpg")
+	m.normal_scale = 1.0
+	m.roughness_texture = load("res://textures/ground_rough.jpg")
+	m.roughness = 1.0
+	m.metallic = 0.0
+	m.vertex_color_use_as_albedo = true  # смешивание с цветами биомов
+	m.transparency = BaseMaterial3D.TRANSPARENCY_DISABLED
+	m.cull_mode = BaseMaterial3D.CULL_DISABLED
+	# лёгкое затухание детализации вдали (без резкого муара)
+	m.texture_filter = BaseMaterial3D.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS_ANISOTROPIC
+	return m
+
+
+func _bark_material() -> StandardMaterial3D:
+	# КОРА: скачанная PBR-текстура коры (ambientCG, CC0)
+	var m := StandardMaterial3D.new()
+	m.albedo_texture = load("res://textures/bark_albedo.jpg")
+	m.normal_enabled = true
+	m.normal_texture = load("res://textures/bark_normal.jpg")
+	m.roughness_texture = load("res://textures/bark_rough.jpg")
+	m.roughness = 1.0
+	m.metallic = 0.0
+	m.transparency = BaseMaterial3D.TRANSPARENCY_DISABLED
+	m.cull_mode = BaseMaterial3D.CULL_DISABLED
+	m.texture_filter = BaseMaterial3D.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS_ANISOTROPIC
+	return m
+
+
+func _foliage_material() -> StandardMaterial3D:
+	# ЛИСТВА: скачанная PBR-текстура растительности (ambientCG, CC0)
+	var m := StandardMaterial3D.new()
+	m.albedo_texture = load("res://textures/foliage_albedo.jpg")
+	m.albedo_color = Color(0.85, 1.0, 0.8)
+	m.normal_enabled = true
+	m.normal_texture = load("res://textures/foliage_normal.jpg")
+	m.roughness_texture = load("res://textures/foliage_rough.jpg")
+	m.roughness = 1.0
+	m.metallic = 0.0
+	m.transparency = BaseMaterial3D.TRANSPARENCY_DISABLED
+	m.cull_mode = BaseMaterial3D.CULL_DISABLED
+	m.texture_filter = BaseMaterial3D.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS_ANISOTROPIC
 	return m
 
 
@@ -593,6 +704,7 @@ func _build_ground() -> void:
 	var verts := PackedVector3Array()
 	var norms := PackedVector3Array()
 	var cols := PackedColorArray()
+	var uvs := PackedVector2Array()
 	var idx := PackedInt32Array()
 	var grass := Color(0.32, 0.5, 0.2)
 	var dark := Color(0.24, 0.4, 0.16)
@@ -647,6 +759,8 @@ func _build_ground() -> void:
 			var v := _color_noise(wx * 1.7, wz * 1.7 + 9.0)
 			c = c.lightened((v - 0.5) * 0.14)
 			cols.append(c)
+			# UV для тайлинга PBR-текстуры земли (1 тайл = 8 м, без растяжения)
+			uvs.append(Vector2(wx / 8.0, wz / 8.0))
 	for z in range(TERRAIN_N):
 		for x in range(TERRAIN_N):
 			var i0 := z * n + x
@@ -661,11 +775,12 @@ func _build_ground() -> void:
 	arrays[Mesh.ARRAY_VERTEX] = verts
 	arrays[Mesh.ARRAY_NORMAL] = norms
 	arrays[Mesh.ARRAY_COLOR] = cols
+	arrays[Mesh.ARRAY_TEX_UV] = uvs
 	arrays[Mesh.ARRAY_INDEX] = idx
 	mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arrays)
 	var mi := MeshInstance3D.new()
 	mi.mesh = mesh
-	mi.material_override = _terrain_material()
+	mi.material_override = _ground_pbr_material()
 	add_child(mi)
 
 	# страховочная коллизия внизу
@@ -754,28 +869,45 @@ func _grid_spot(grid_size: float, jitter: float) -> Vector3:
 # ---------- деревья / камни / руды / трава (MultiMesh — оптимизация) ----------
 
 func _build_trees() -> void:
-	var mesh := _make_tree_mesh()
-	var mm := MultiMesh.new()
-	mm.transform_format = MultiMesh.TRANSFORM_3D
-	mm.mesh = mesh
-	mm.instance_count = 250
+	# три вида деревьев: 0=ель, 1=лиственное, 2=сухое. Каждый вид — свой MultiMesh
+	# (surface 0 = кора с PBR-текстурой, surface 1 = листва с PBR-текстурой)
 	_tree_spots.clear()
-	for i in range(250):
-		# равномерно по карте, ближе друг к другу
-		var pos := _grid_spot(28.0, 10.0)
-		var big := _rng.randf() < 0.35
-		var s := _rng.randf_range(2.2, 3.2) if big else _rng.randf_range(0.7, 1.6)
-		var t := Transform3D(Basis(Vector3.UP, _rng.randf() * TAU), pos + Vector3(0, -0.1, 0))
-		t = t.scaled(Vector3(s, s, s))
-		mm.set_instance_transform(i, t)
-		_tree_spots.append({"pos": pos, "index": i, "alive": true, "big": big})
-	var inst := MultiMeshInstance3D.new()
-	inst.multimesh = mm
-	inst.material_override = _terrain_material()
-	inst.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-	inst.name = "Trees"
-	add_child(inst)
-	_trees_mm = mm
+	_trees_mm_list.clear()
+	var counts := [130, 90, 40]   # ели, лиственные, сухие
+	var names := ["TreesPine", "TreesLeafy", "TreesDead"]
+	for species in range(3):
+		var cnt: int = counts[species]
+		var mm := MultiMesh.new()
+		mm.transform_format = MultiMesh.TRANSFORM_3D
+		mm.mesh = _make_tree_mesh(species)
+		mm.instance_count = cnt
+		for i in range(cnt):
+			var pos := _grid_spot(24.0, 10.0)
+			var big := _rng.randf() < 0.3
+			var s: float
+			if species == 1:
+				s = _rng.randf_range(1.6, 2.4) if big else _rng.randf_range(0.9, 1.5)
+			elif species == 2:
+				s = _rng.randf_range(0.9, 1.6)
+			else:
+				s = _rng.randf_range(2.2, 3.2) if big else _rng.randf_range(0.8, 1.6)
+			var t := Transform3D(Basis(Vector3.UP, _rng.randf() * TAU), pos)
+			t = t.scaled(Vector3(s, s, s))
+			mm.set_instance_transform(i, t)
+			_tree_spots.append({"pos": pos, "index": i, "alive": true, "big": big, "mm": mm})
+		# кора и листва — раздельные материалы со скачанными PBR-текстурами
+		# (задаём прямо на поверхностях меша: MultiMesh не поддерживает override по поверхностям)
+		var tmesh: ArrayMesh = mm.mesh
+		tmesh.surface_set_material(0, _bark_material())
+		if tmesh.get_surface_count() > 1:
+			tmesh.surface_set_material(1, _foliage_material())
+		var inst := MultiMeshInstance3D.new()
+		inst.multimesh = mm
+		inst.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		inst.name = names[species]
+		add_child(inst)
+		_trees_mm_list.append(mm)
+	_trees_mm = _trees_mm_list[0] if _trees_mm_list.size() > 0 else null
 
 
 func _build_rocks() -> void:
@@ -801,22 +933,59 @@ func _build_rocks() -> void:
 
 
 func _build_grass() -> void:
+	# ТРАВА: основание каждого пучка утоплено в землю (никогда не висит в воздухе).
+	# Ставим только на пологой суше выше воды, вдали от берега.
 	var mesh := _make_grass_mesh()
 	var mm := MultiMesh.new()
 	mm.transform_format = MultiMesh.TRANSFORM_3D
 	mm.mesh = mesh
-	mm.instance_count = 1800
-	for i in range(1800):
-		var pos := _random_spot(8.0)
-		pos.y += 0.08  # чуть выше рельефа, чтобы не тонула и не зирила с ним
-		var s := _rng.randf_range(0.7, 1.8)
-		var t := Transform3D(Basis(Vector3.UP, _rng.randf() * TAU), pos)
+	var target := 3000
+	var placed: Array = []
+	var attempts := 0
+	while placed.size() < target and attempts < target * 8:
+		attempts += 1
+		var ang := _rng.randf() * TAU
+		var r := _rng.randf_range(6.0, ISLAND_R - 45.0)
+		var x := cos(ang) * r
+		var z := sin(ang) * r
+		var h := _surface_height(x, z)
+		# только уверенно над водой (не на пляже/в воде)
+		if h < WATER_LEVEL + 1.2:
+			continue
+		# не на крутых склонах — иначе широкий пучок торчит углами
+		var e := 1.2
+		var nx := _surface_height(x + e, z) - _surface_height(x - e, z)
+		var nz := _surface_height(x, z + e) - _surface_height(x, z - e)
+		var slope := Vector2(nx, nz).length() / (2.0 * e)
+		if slope > 0.35:
+			continue
+		# отбраковка резких перепадов рядом (обрывы) — трава не должна тонуть в стене
+		var around_max := maxf(maxf(_surface_height(x + e, z), _surface_height(x - e, z)),
+			maxf(_surface_height(x, z + e), _surface_height(x, z - e)))
+		var around_min := minf(minf(_surface_height(x + e, z), _surface_height(x - e, z)),
+			minf(_surface_height(x, z + e), _surface_height(x, z - e)))
+		if around_max - around_min > 1.2:
+			continue
+		placed.append(Vector3(x, h, z))
+	# ВАЖНО: instance_count задаём ДО записи трансформов (иначе буфер обнуляется)
+	mm.instance_count = placed.size()
+	for i in range(placed.size()):
+		var p: Vector3 = placed[i]
+		var s := _rng.randf_range(0.7, 1.5)
+		# КЛЮЧЕВОЕ: опускаем основание НИЖЕ поверхности на величину, зависящую от масштаба —
+		# трава «врастает» в землю и не может парить даже на неровностях
+		var sink := 0.12 * s
+		var t := Transform3D(Basis(Vector3.UP, _rng.randf() * TAU), Vector3(p.x, p.y - sink, p.z))
 		t = t.scaled(Vector3(s, s, s))
 		mm.set_instance_transform(i, t)
 	var inst := MultiMeshInstance3D.new()
 	inst.multimesh = mm
-	inst.material_override = _grass_material()  # НЕ освещённая — всегда ярко-зелёная
+	inst.material_override = _grass_material()
 	inst.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	# дальность прорисовки травы (оптимизация: далёкая трава не рисуется)
+	inst.visibility_range_end = 120.0
+	inst.visibility_range_end_margin = 20.0
+	inst.name = "Grass"
 	add_child(inst)
 
 
@@ -1301,7 +1470,7 @@ func _harvest(origin: Vector3, look_dir: Vector3) -> String:
 		"tree":
 			var amt := 60 if best_spot.get("big", false) else 25
 			GameState.add_resource("wood", int(amt * GameState.harvest_bonus()))
-			_remove_resource(best_spot, _trees_mm)
+			_remove_resource(best_spot, best_spot.get("mm", _trees_mm))
 		"stone":
 			GameState.add_resource("stone", int(20.0 * GameState.mining_bonus()))
 			_remove_resource(best_spot, _rocks_mm)
