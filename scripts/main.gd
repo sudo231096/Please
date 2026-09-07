@@ -124,7 +124,8 @@ func _ground_height(x: float, z: float) -> float:
 
 
 func _surface_height(x: float, z: float) -> float:
-	# точная высота видимого меша (билинейная интерполяция сетки высот) — объекты не «летают»
+	# точная высота видимого меша: интерполяция ПО ТЕМ ЖЕ ТРЕУГОЛЬНИКАМ,
+	# что и в _build_ground — объекты стоят ровно на поверхности, не «летают»
 	if _heights.size() == 0:
 		return _ground_height(x, z)
 	var n := TERRAIN_N + 1
@@ -134,13 +135,20 @@ func _surface_height(x: float, z: float) -> float:
 	var z0 := clampi(int(floor(fz)), 0, TERRAIN_N - 1)
 	var x1 := mini(x0 + 1, TERRAIN_N)
 	var z1 := mini(z0 + 1, TERRAIN_N)
-	var tx := fx - float(x0)
-	var tz := fz - float(z0)
+	var tx := clampf(fx - float(x0), 0.0, 1.0)
+	var tz := clampf(fz - float(z0), 0.0, 1.0)
 	var h00 := _heights[z0 * n + x0]
 	var h10 := _heights[z0 * n + x1]
 	var h01 := _heights[z1 * n + x0]
 	var h11 := _heights[z1 * n + x1]
-	return lerpf(lerpf(h00, h10, tx), lerpf(h01, h11, tx), tz)
+	# диагональ сетки идёт из (x, z+1) в (x+1, z): треугольники
+	# A=(x,z),(x,z+1),(x+1,z)  и  B=(x+1,z),(x,z+1),(x+1,z+1)
+	if tx + tz <= 1.0:
+		# треугольник A
+		return h00 + tx * (h10 - h00) + tz * (h01 - h00)
+	else:
+		# треугольник B
+		return h11 + (1.0 - tx) * (h01 - h11) + (1.0 - tz) * (h10 - h11)
 
 
 func _build_puddles() -> void:
@@ -437,6 +445,13 @@ func _build_sky() -> void:
 	sun.shadow_normal_bias = 1.2
 	add_child(sun)
 	_sun = sun
+	# заполняющий свет (мягчит тени, подсвечивает тёмные стороны)
+	var fill := DirectionalLight3D.new()
+	fill.rotation_degrees = Vector3(-25, -150, 0)
+	fill.light_color = Color(0.7, 0.8, 1.0)
+	fill.light_energy = 0.5
+	fill.shadow_enabled = false
+	add_child(fill)
 	# видимое солнце в небе (крупный яркий диск + широкое гало)
 	var disc := MeshInstance3D.new()
 	var sm := SphereMesh.new()
@@ -532,20 +547,36 @@ func _update_weather(delta: float) -> void:
 
 
 func _build_water() -> void:
-	# море вокруг острова — большая полупрозрачная водная плоскость
+	# море вокруг острова — полупрозрачная вода с бликом (fresnel-подобный вид)
 	var plane := PlaneMesh.new()
 	plane.size = Vector2(TERRAIN_SIZE * 2.5, TERRAIN_SIZE * 2.5)
 	var w := MeshInstance3D.new()
 	w.mesh = plane
 	var mat := StandardMaterial3D.new()
-	mat.albedo_color = Color(0.09, 0.33, 0.52, 0.78)
+	mat.albedo_color = Color(0.07, 0.4, 0.6, 0.82)
 	mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
-	mat.roughness = 0.05
-	mat.metallic = 0.15
+	mat.roughness = 0.02
+	mat.metallic = 0.35
+	mat.emission_enabled = true
+	mat.emission = Color(0.05, 0.18, 0.3)
+	mat.emission_energy = 0.5
 	w.material_override = mat
 	w.position = Vector3(0, WATER_LEVEL, 0)
 	w.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	add_child(w)
+	# второй слой воды ниже — глубина цвета
+	var plane2 := PlaneMesh.new()
+	plane2.size = Vector2(TERRAIN_SIZE * 2.5, TERRAIN_SIZE * 2.5)
+	var w2 := MeshInstance3D.new()
+	w2.mesh = plane2
+	var mat2 := StandardMaterial3D.new()
+	mat2.albedo_color = Color(0.03, 0.2, 0.34, 0.6)
+	mat2.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	mat2.roughness = 0.5
+	w2.material_override = mat2
+	w2.position = Vector3(0, WATER_LEVEL - 2.0, 0)
+	w2.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	add_child(w2)
 
 
 func _build_ground() -> void:
@@ -790,7 +821,7 @@ func _build_grass() -> void:
 
 
 func _build_ores() -> void:
-	# руды: 0=сера (жёлтые валуны), 1=железо (тёмная), 2=камень (светлая), 3=металл (блестящая)
+	# руды: 0=сера (жёлтые кристаллы), 1=железо (ржавый камень), 2=камень (серый валун), 3=металл (блестящий лом)
 	_ore_spots.clear()
 	for i in range(60):
 		var pos := _grid_spot(20.0, 8.0)
@@ -800,86 +831,78 @@ func _build_ores() -> void:
 		add_child(container)
 		_ore_spots.append({"pos": pos, "kind": kind, "alive": true, "node": container})
 		match kind:
-			0:
-				_sulfur_boulder_in(pos, container)
-			1:
-				var r := _rng.randf_range(0.5, 1.0)
-				var ore := MeshInstance3D.new()
-				var sm := SphereMesh.new()
-				sm.radius = r
-				sm.height = r * 1.4
-				ore.mesh = sm
-				ore.material_override = _mat(Color(0.25, 0.22, 0.2))
-				ore.position = Vector3(0, r * 0.5, 0)
-				ore.scale = Vector3(1, _rng.randf_range(0.6, 0.9), 1)
-				container.add_child(ore)
-				var vein := MeshInstance3D.new()
-				var sm2 := SphereMesh.new()
-				sm2.radius = r * 0.4
-				sm2.height = r * 0.8
-				vein.mesh = sm2
-				vein.material_override = _mat(Color(0.6, 0.3, 0.1))
-				vein.position = Vector3(r * 0.3, r * 0.6, 0)
-				container.add_child(vein)
-			2:
-				var r2 := _rng.randf_range(0.6, 1.2)
-				var stone := MeshInstance3D.new()
-				var sm3 := SphereMesh.new()
-				sm3.radius = r2
-				sm3.height = r2 * 1.5
-				stone.mesh = sm3
-				stone.material_override = _mat(Color(0.55, 0.55, 0.6))
-				stone.position = Vector3(0, r2 * 0.4, 0)
-				stone.scale = Vector3(1, _rng.randf_range(0.5, 0.85), 1)
-				container.add_child(stone)
-			3:
-				var r3 := _rng.randf_range(0.5, 1.0)
-				var metal := MeshInstance3D.new()
-				var sm4 := SphereMesh.new()
-				sm4.radius = r3
-				sm4.height = r3 * 1.3
-				metal.mesh = sm4
-				metal.material_override = _mat(Color(0.55, 0.58, 0.62), Color(0.3, 0.35, 0.4))
-				metal.position = Vector3(0, r3 * 0.4, 0)
-				container.add_child(metal)
+			0: _ore_sulfur(container)
+			1: _ore_iron(container)
+			2: _ore_stone(container)
+			3: _ore_metal(container)
 
 
-func _sulfur_boulder_in(pos: Vector3, parent: Node3D) -> void:
-	# крупный жёлтый валун серы (в контейнере)
-	var r := _rng.randf_range(0.7, 1.3)
-	var b := MeshInstance3D.new()
-	var sm := SphereMesh.new()
-	sm.radius = r
-	sm.height = r * 1.5
-	b.mesh = sm
-	b.material_override = _mat(Color(1.0, 0.8, 0.15), Color(0.8, 0.6, 0.05))
-	b.position = Vector3(0, r * 0.5, 0)
-	b.scale = Vector3(1, _rng.randf_range(0.5, 0.8), 1)
-	parent.add_child(b)
-	for i in range(3):
+# --- отдельные модели руды (основание каждого меша на y=0, стоит на земле) ---
+
+func _ore_sulfur(parent: Node3D) -> void:
+	# сера: пучок ярких жёлтых светящихся кристаллов
+	for i in range(4):
+		var h := _rng.randf_range(0.5, 1.1)
 		var c := MeshInstance3D.new()
 		var cm := CylinderMesh.new()
-		cm.top_radius = 0.04
-		cm.bottom_radius = 0.16
-		cm.height = _rng.randf_range(0.3, 0.6)
+		cm.top_radius = 0.02
+		cm.bottom_radius = _rng.randf_range(0.14, 0.24)
+		cm.height = h
 		c.mesh = cm
-		c.material_override = _mat(Color(1.0, 0.9, 0.3), Color(1.0, 0.7, 0.1))
-		c.position = Vector3(_rng.randf_range(-0.4, 0.4), r * 0.6, _rng.randf_range(-0.4, 0.4))
+		c.material_override = _mat(Color(1.0, 0.85, 0.15), Color(0.85, 0.6, 0.05))
+		c.position = Vector3(_rng.randf_range(-0.4, 0.4), h * 0.5, _rng.randf_range(-0.4, 0.4))
+		c.rotation_degrees = Vector3(_rng.randf_range(-18, 18), 0, _rng.randf_range(-18, 18))
 		parent.add_child(c)
 
 
-func _ore_crystal(pos: Vector3, color: Color, emissive: Color) -> void:
+func _ore_iron(parent: Node3D) -> void:
+	# железо: тёмный камень с ржаво-оранжевыми прожилками
+	var r := _rng.randf_range(0.6, 1.0)
+	var rock := MeshInstance3D.new()
+	var sm := SphereMesh.new()
+	sm.radius = r
+	sm.height = r * 1.5
+	rock.mesh = sm
+	rock.material_override = _mat(Color(0.28, 0.22, 0.2))
+	rock.position = Vector3(0, r * 0.5, 0)
+	rock.scale = Vector3(1, _rng.randf_range(0.55, 0.8), 1)
+	parent.add_child(rock)
 	for i in range(3):
-		var c := MeshInstance3D.new()
-		var cm := CylinderMesh.new()
-		cm.top_radius = 0.03
-		cm.bottom_radius = 0.14
-		cm.height = _rng.randf_range(0.4, 0.8)
-		c.mesh = cm
-		c.material_override = _mat(color, emissive)
-		c.position = Vector3(pos.x + _rng.randf_range(-0.25, 0.25), pos.y + cm.height * 0.4, pos.z + _rng.randf_range(-0.25, 0.25))
-		c.rotation_degrees = Vector3(_rng.randf_range(-20, 20), 0, _rng.randf_range(-20, 20))
-		add_child(c)
+		var vein := MeshInstance3D.new()
+		var vm := SphereMesh.new()
+		vm.radius = r * 0.3
+		vm.height = r * 0.5
+		vein.mesh = vm
+		vein.material_override = _mat(Color(0.62, 0.3, 0.12))
+		vein.position = Vector3(_rng.randf_range(-r * 0.5, r * 0.5), _rng.randf_range(r * 0.4, r * 0.9), _rng.randf_range(-r * 0.5, r * 0.5))
+		parent.add_child(vein)
+
+
+func _ore_stone(parent: Node3D) -> void:
+	# камень: серый неровный валун
+	var r := _rng.randf_range(0.6, 1.2)
+	var stone := MeshInstance3D.new()
+	var sm := SphereMesh.new()
+	sm.radius = r
+	sm.height = r * 1.5
+	stone.mesh = sm
+	stone.material_override = _mat(Color(0.55, 0.55, 0.6))
+	stone.position = Vector3(0, r * 0.45, 0)
+	stone.scale = Vector3(_rng.randf_range(0.8, 1.2), _rng.randf_range(0.5, 0.8), _rng.randf_range(0.8, 1.2))
+	parent.add_child(stone)
+
+
+func _ore_metal(parent: Node3D) -> void:
+	# металл: блестящий металлический лом (куски под углами)
+	for i in range(3):
+		var m := MeshInstance3D.new()
+		var bm := BoxMesh.new()
+		bm.size = Vector3(_rng.randf_range(0.4, 0.8), _rng.randf_range(0.1, 0.2), _rng.randf_range(0.4, 0.8))
+		m.mesh = bm
+		m.material_override = _mat(Color(0.58, 0.6, 0.64), Color(0.25, 0.3, 0.35))
+		m.position = Vector3(_rng.randf_range(-0.4, 0.4), _rng.randf_range(0.1, 0.4), _rng.randf_range(-0.4, 0.4))
+		m.rotation_degrees = Vector3(_rng.randf_range(-25, 25), _rng.randf_range(0, 180), _rng.randf_range(-25, 25))
+		parent.add_child(m)
 
 
 # ---------- бочки / монументы / ящики с лутом ----------
@@ -1187,7 +1210,7 @@ func _spawn_guaranteed_resources(center: Vector3) -> void:
 	var scont := Node3D.new()
 	scont.position = sp
 	add_child(scont)
-	_sulfur_boulder_in(sp, scont)
+	_ore_sulfur(scont)
 	_ore_spots.append({"pos": sp, "kind": 0, "alive": true, "node": scont})
 
 
