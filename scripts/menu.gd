@@ -164,6 +164,25 @@ func _build_ui() -> void:
 	play.pressed.connect(_start_game)
 	layer.add_child(play)
 
+	# кнопка СЕРВЕРЫ (мультиплеер) — над кнопкой ИГРАТЬ
+	var servers_btn := Button.new()
+	servers_btn.text = "СЕРВЕРЫ"
+	servers_btn.focus_mode = Control.FOCUS_NONE
+	servers_btn.anchor_left = 1.0
+	servers_btn.anchor_right = 1.0
+	servers_btn.anchor_top = 1.0
+	servers_btn.anchor_bottom = 1.0
+	servers_btn.offset_left = -260
+	servers_btn.offset_right = -40
+	servers_btn.offset_top = -220
+	servers_btn.offset_bottom = -145
+	servers_btn.add_theme_font_size_override("font_size", 28)
+	servers_btn.modulate = Color(0.9, 0.78, 0.45)
+	servers_btn.pressed.connect(func() -> void:
+		get_tree().change_scene_to_file("res://scenes/Servers.tscn")
+	)
+	layer.add_child(servers_btn)
+
 	# кнопка НАСТРОЙКИ (слева вверху)
 	var settings_btn := Button.new()
 	settings_btn.text = "НАСТРОЙКИ"
@@ -263,4 +282,8 @@ func _refresh_settings() -> void:
 
 
 func _start_game() -> void:
+	# одиночная игра: отключаемся от сервера и переходим на локальный профиль
+	if Net.state != "offline":
+		Net.disconnect_from_server(false)
+	GameState.set_active_server(0)
 	get_tree().change_scene_to_file("res://scenes/Loading.tscn")

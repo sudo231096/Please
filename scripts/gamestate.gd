@@ -3,6 +3,28 @@ extends Node
 
 const SAVE_PATH := "user://scraplands.cfg"
 
+# --- мультиплеер: активный сервер и отдельное сохранение под него ---
+# active_server_id == 0 → одиночная игра (старое сохранение scraplands.cfg)
+var active_server_id := 0
+var player_name := ""
+var world_seed := 0
+
+
+func active_save_path() -> String:
+	if active_server_id <= 0:
+		return SAVE_PATH
+	return "user://player_data_%d.cfg" % active_server_id
+
+
+func set_active_server(id: int) -> void:
+	# смена сервера = смена профиля прогресса: сохраняем старый, чистим, грузим новый
+	if active_server_id == id:
+		return
+	save_inventory()
+	active_server_id = id
+	reset_run()
+	load_inventory()
+
 var hp := 100.0
 var max_hp := 100.0
 var hunger := 100.0
@@ -127,6 +149,8 @@ var assigning_hotbar := -1
 
 func _ready() -> void:
 	load_settings()
+	if player_name == "":
+		player_name = "Player%04d" % (randi() % 10000)
 	reset_run()
 
 
@@ -361,8 +385,9 @@ func is_equipped(id: String) -> bool:
 # --- сохранение инвентаря ---
 
 func save_inventory() -> void:
+	var path := active_save_path()
 	var cfg := ConfigFile.new()
-	cfg.load(SAVE_PATH)
+	cfg.load(path)
 	cfg.set_value("res", "wood", wood)
 	cfg.set_value("res", "stone", stone)
 	cfg.set_value("res", "sulfur", sulfur)
@@ -375,12 +400,12 @@ func save_inventory() -> void:
 	cfg.set_value("inv", "items", items)
 	cfg.set_value("inv", "equipped", equipped)
 	cfg.set_value("inv", "hotbar", hotbar)
-	cfg.save(SAVE_PATH)
+	cfg.save(path)
 
 
 func load_inventory() -> bool:
 	var cfg := ConfigFile.new()
-	if cfg.load(SAVE_PATH) != OK:
+	if cfg.load(active_save_path()) != OK:
 		return false
 	if not cfg.has_section("inv"):
 		return false

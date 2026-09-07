@@ -31,6 +31,7 @@ signal died
 
 func _ready() -> void:
 	add_to_group("player")
+	add_to_group("local_player")
 	collision_layer = 2
 	collision_mask = 1
 	_cam = Camera3D.new()

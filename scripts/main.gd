@@ -58,7 +58,12 @@ const MONUMENTS := [
 
 func _ready() -> void:
 	add_to_group("terrain")
-	_rng.seed = randi()
+	# на сервере у каждого мира своё детерминированное семя (Server 1..5 — разные миры),
+	# в одиночной игре — случайное
+	if GameState.active_server_id > 0 and GameState.world_seed != 0:
+		_rng.seed = GameState.world_seed
+	else:
+		_rng.seed = randi()
 	if not GameState.return_to_pos:
 		# свежий запуск или рестарт после смерти — сбрасываем прогресс
 		GameState.reset_run()
@@ -77,6 +82,16 @@ func _ready() -> void:
 	_spawn_player()
 	_build_hud()
 	_spawn_animals()
+	_setup_multiplayer()
+
+
+func _setup_multiplayer() -> void:
+	# отрисовка других игроков этого сервера (данные приходят только от сервера)
+	if GameState.active_server_id <= 0:
+		return
+	var rp := preload("res://scripts/remote_players.gd").new()
+	rp.name = "RemotePlayers"
+	add_child(rp)
 
 
 # ---------- высота рельефа (остров) ----------
@@ -873,7 +888,7 @@ func _build_trees() -> void:
 	# (surface 0 = кора с PBR-текстурой, surface 1 = листва с PBR-текстурой)
 	_tree_spots.clear()
 	_trees_mm_list.clear()
-	var counts := [130, 90, 40]   # ели, лиственные, сухие
+	var counts := [110, 70, 35]   # ели, лиственные, сухие
 	var names := ["TreesPine", "TreesLeafy", "TreesDead"]
 	for species in range(3):
 		var cnt: int = counts[species]
@@ -907,7 +922,81 @@ func _build_trees() -> void:
 		inst.name = names[species]
 		add_child(inst)
 		_trees_mm_list.append(mm)
+	# --- два скачанных вида деревьев (Quaternius, CC0): берёза и клён ---
+	_build_downloaded_trees("res://models/tree_birch.glb", 85, 7.5, 10.5, "TreesBirch")
+	_build_downloaded_trees("res://models/tree_maple.glb", 70, 8.0, 12.0, "TreesMaple")
 	_trees_mm = _trees_mm_list[0] if _trees_mm_list.size() > 0 else null
+
+
+func _build_downloaded_trees(path: String, count: int, hmin: float, hmax: float, node_name: String) -> void:
+	# берём меш прямо из скачанной GLB (кора и листва — собственные текстуры модели)
+	# и размножаем его через MultiMesh: дёшево для мобилы и даёт естественный лес
+	if not ResourceLoader.exists(path):
+		push_warning("Нет модели дерева: " + path)
+		return
+	var scene: PackedScene = load(path)
+	var inst_root: Node3D = scene.instantiate()
+	var src_mesh: ArrayMesh = null
+	var src_h := 1.0
+	for mi in inst_root.find_children("*", "MeshInstance3D", true, false):
+		if mi.mesh != null:
+			src_mesh = mi.mesh
+			src_h = maxf(mi.mesh.get_aabb().size.y, 0.001)
+			break
+	inst_root.queue_free()
+	if src_mesh == null:
+		push_warning("В модели нет меша: " + path)
+		return
+	# материалы модели: непрозрачные, двухсторонние (листва — плоскости)
+	for si in range(src_mesh.get_surface_count()):
+		var mat: Material = src_mesh.surface_get_material(si)
+		if mat is BaseMaterial3D:
+			var m: BaseMaterial3D = mat.duplicate()
+			m.transparency = BaseMaterial3D.TRANSPARENCY_DISABLED
+			m.cull_mode = BaseMaterial3D.CULL_DISABLED
+			m.texture_filter = BaseMaterial3D.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS_ANISOTROPIC
+			m.roughness = 0.9
+			src_mesh.surface_set_material(si, m)
+	var mm := MultiMesh.new()
+	mm.transform_format = MultiMesh.TRANSFORM_3D
+	mm.mesh = src_mesh
+	mm.instance_count = count
+	for i in range(count):
+		var pos := _grid_spot(26.0, 11.0)
+		# масштаб выводим из желаемой высоты в метрах — пропорции модели сохраняются
+		var want_h := _rng.randf_range(hmin, hmax)
+		var s: float = want_h / src_h
+		# основание чуть утоплено, чтобы дерево не парило на неровностях
+		var t := Transform3D(Basis(Vector3.UP, _rng.randf() * TAU), pos - Vector3(0, 0.15, 0))
+		t = t.scaled(Vector3(s, s, s))
+		mm.set_instance_transform(i, t)
+		_tree_spots.append({"pos": pos, "index": i, "alive": true, "big": want_h > (hmin + hmax) * 0.5, "mm": mm})
+		# коллизия ствола: игрок не проходит сквозь дерево
+		_add_trunk_collision(pos, want_h)
+	var node := MultiMeshInstance3D.new()
+	node.multimesh = mm
+	node.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	node.name = node_name
+	# LOD по дальности: далёкие деревья этого вида не рисуются (производительность)
+	node.visibility_range_end = 320.0
+	node.visibility_range_end_margin = 40.0
+	add_child(node)
+	_trees_mm_list.append(mm)
+
+
+func _add_trunk_collision(pos: Vector3, height: float) -> void:
+	var body := StaticBody3D.new()
+	body.collision_layer = 1
+	body.collision_mask = 0
+	var cs := CollisionShape3D.new()
+	var cap := CylinderShape3D.new()
+	cap.radius = clampf(height * 0.045, 0.22, 0.6)
+	cap.height = height
+	cs.shape = cap
+	cs.position = Vector3(0, height * 0.5, 0)
+	body.add_child(cs)
+	body.position = pos
+	add_child(body)
 
 
 func _build_rocks() -> void:
