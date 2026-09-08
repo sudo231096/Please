@@ -218,6 +218,9 @@ const RECIPES := {
 	"boots": {"name": "Сапоги", "cost": {"cloth": 10}, "type": "clothing", "cat": "Одежда", "tech": "", "time": 2.0},
 	"headband": {"name": "Повязка", "cost": {"cloth": 5}, "type": "clothing", "cat": "Одежда", "tech": "", "time": 1.5},
 	"bone_armor": {"name": "Костяная броня", "cost": {"cloth": 20, "metal": 10}, "type": "clothing", "cat": "Броня", "tech": "", "time": 6.0},
+	"torch_raid": {"name": "Зажигательный снаряд", "cost": {"sulfur": 50, "cloth": 20}, "type": "raid", "cat": "Рейд", "tech": "", "time": 5.0},
+	"satchel": {"name": "Сумка со взрывчаткой", "cost": {"sulfur": 120, "metal": 25, "cloth": 15}, "type": "raid", "cat": "Рейд", "tech": "masonry", "time": 10.0},
+	"explosive": {"name": "Взрывчатка", "cost": {"sulfur": 220, "metal": 60, "cloth": 25}, "type": "raid", "cat": "Рейд", "tech": "metallurgy", "time": 18.0},
 }
 
 var built := {"campfire": 0, "furnace": 0, "wall": 0, "floor": 0, "door": 0, "bag": 0, "workbench": 0}
@@ -254,6 +257,9 @@ const ITEMS := {
 	"boots": {"name": "Сапоги", "icon": "cloth", "stack": 1, "cat": "Одежда", "slot": "feet", "desc": "Прочная обувь."},
 	"headband": {"name": "Повязка", "icon": "cloth", "stack": 1, "cat": "Одежда", "slot": "head", "desc": "Головная повязка."},
 	"bone_armor": {"name": "Костяная броня", "icon": "metal", "stack": 1, "cat": "Броня", "slot": "chest", "desc": "Защищает грудь от урона."},
+	"torch_raid": {"name": "Зажигательный снаряд", "icon": "campfire", "stack": 10, "cat": "Рейд", "desc": "Слабый рейдовый заряд. Ломает деревянные постройки."},
+	"satchel": {"name": "Сумка со взрывчаткой", "icon": "sulfur", "stack": 5, "cat": "Рейд", "desc": "Средний заряд для рейда чужой базы."},
+	"explosive": {"name": "Взрывчатка", "icon": "sulfur", "stack": 5, "cat": "Рейд", "desc": "Мощный заряд. Пробивает каменные стены."},
 }
 
 const EQUIP_SLOTS := ["head", "chest", "legs", "feet"]
@@ -574,8 +580,19 @@ const BUILD_CATALOG := {
 
 const BUILD_CATS := ["Интерьер", "Фундамент", "Стены и пол", "Лестница", "Природа"]
 
+## Прочность построек по материалу (tier 0 = дерево, 1 = камень)
+const BUILD_HP := {0: 250.0, 1: 700.0}
+
+## Рейдовые инструменты: только ими можно ломать чужие постройки
+const RAID_TOOLS := {
+	"explosive": {"name": "Взрывчатка", "dmg": 275.0, "radius": 4.5, "cost": {"sulfur": 220, "metal": 60, "cloth": 25}},
+	"satchel": {"name": "Сумка со взрывчаткой", "dmg": 130.0, "radius": 3.2, "cost": {"sulfur": 120, "metal": 25, "cloth": 15}},
+	"torch_raid": {"name": "Зажигательный снаряд", "dmg": 70.0, "radius": 2.4, "cost": {"sulfur": 50, "cloth": 20}},
+}
+
 # поставленные постройки: [{kind, pos, rot, tier, node}]
 var structures: Array = []
+var saved_structures: Array = []   # загруженные из файла (восстанавливаются при входе в мир)
 var build_selected := "foundation"
 
 
@@ -634,6 +651,207 @@ func builds_in_cat(cat: String) -> Array:
 	return out
 
 
+# ================= КЛАНЫ =================
+## clan = {"name", "tag", "leader", "members":[{"name","role"}], "allies":[tag], "enemies":[tag], "color"}
+var clan: Dictionary = {}
+var clan_invites: Array = []      # входящие приглашения [{"tag","name","from"}]
+var clan_chat: Array = []         # [{"who","text","t"}]
+
+const CLAN_COLORS := [
+	Color(0.35, 0.7, 1.0), Color(0.95, 0.55, 0.25), Color(0.5, 0.9, 0.4),
+	Color(0.9, 0.4, 0.75), Color(0.95, 0.85, 0.3), Color(0.65, 0.5, 1.0),
+]
+
+
+func in_clan() -> bool:
+	return not clan.is_empty()
+
+
+func is_clan_leader() -> bool:
+	return in_clan() and String(clan.get("leader", "")) == player_name
+
+
+func create_clan(cname: String, tag: String) -> String:
+	if in_clan():
+		return "Вы уже состоите в клане"
+	var n: String = cname.strip_edges()
+	var t: String = tag.strip_edges().to_upper()
+	if n.length() < 3:
+		return "Название клана — минимум 3 символа"
+	if t.length() < 2 or t.length() > 5:
+		return "Тег клана — от 2 до 5 символов"
+	clan = {
+		"name": n, "tag": t, "leader": player_name,
+		"members": [{"name": player_name, "role": "Лидер"}],
+		"allies": [], "enemies": [],
+		"color": CLAN_COLORS[randi() % CLAN_COLORS.size()],
+	}
+	save_clan()
+	return ""
+
+
+func disband_clan() -> void:
+	clan = {}
+	clan_chat.clear()
+	save_clan()
+
+
+func leave_clan() -> String:
+	if not in_clan():
+		return "Вы не в клане"
+	if is_clan_leader() and clan_members().size() > 1:
+		return "Сначала передайте лидерство"
+	if is_clan_leader():
+		disband_clan()
+		return ""
+	var ms: Array = clan_members()
+	for i in range(ms.size()):
+		if String(ms[i]["name"]) == player_name:
+			ms.remove_at(i)
+			break
+	clan = {}
+	save_clan()
+	return ""
+
+
+func clan_members() -> Array:
+	return clan.get("members", []) if in_clan() else []
+
+
+func clan_tag() -> String:
+	return String(clan.get("tag", "")) if in_clan() else ""
+
+
+func clan_color() -> Color:
+	if not in_clan():
+		return Color(1, 1, 1)
+	var c: Variant = clan.get("color", Color(0.35, 0.7, 1.0))
+	return c if c is Color else Color(0.35, 0.7, 1.0)
+
+
+## Приглашение игрока (в мультиплеере уходит по сети, локально — в список)
+func invite_to_clan(pname: String) -> String:
+	if not in_clan():
+		return "Сначала создайте клан"
+	if not is_clan_leader():
+		return "Приглашать может только лидер"
+	for m in clan_members():
+		if String(m["name"]) == pname:
+			return "Игрок уже в клане"
+	if clan_members().size() >= 12:
+		return "В клане максимум 12 участников"
+	return ""
+
+
+func accept_invite(idx: int) -> String:
+	if idx < 0 or idx >= clan_invites.size():
+		return "Приглашение не найдено"
+	if in_clan():
+		return "Сначала покиньте текущий клан"
+	var inv: Dictionary = clan_invites[idx]
+	clan = {
+		"name": String(inv["name"]), "tag": String(inv["tag"]),
+		"leader": String(inv["from"]),
+		"members": [{"name": String(inv["from"]), "role": "Лидер"}, {"name": player_name, "role": "Участник"}],
+		"allies": [], "enemies": [], "color": CLAN_COLORS[randi() % CLAN_COLORS.size()],
+	}
+	clan_invites.remove_at(idx)
+	save_clan()
+	return ""
+
+
+func decline_invite(idx: int) -> void:
+	if idx >= 0 and idx < clan_invites.size():
+		clan_invites.remove_at(idx)
+
+
+func kick_member(pname: String) -> String:
+	if not is_clan_leader():
+		return "Исключать может только лидер"
+	if pname == player_name:
+		return "Нельзя исключить себя"
+	var ms: Array = clan_members()
+	for i in range(ms.size()):
+		if String(ms[i]["name"]) == pname:
+			ms.remove_at(i)
+			save_clan()
+			return ""
+	return "Участник не найден"
+
+
+func transfer_leadership(pname: String) -> String:
+	if not is_clan_leader():
+		return "Передать лидерство может только лидер"
+	var found := false
+	for m in clan_members():
+		if String(m["name"]) == pname:
+			found = true
+	if not found:
+		return "Участник не найден"
+	clan["leader"] = pname
+	for m in clan_members():
+		m["role"] = "Лидер" if String(m["name"]) == pname else "Участник"
+	save_clan()
+	return ""
+
+
+func set_relation(tag: String, rel: String) -> void:
+	if not in_clan():
+		return
+	var t := tag.to_upper()
+	var allies: Array = clan.get("allies", [])
+	var enemies: Array = clan.get("enemies", [])
+	allies.erase(t)
+	enemies.erase(t)
+	if rel == "ally":
+		allies.append(t)
+	elif rel == "enemy":
+		enemies.append(t)
+	clan["allies"] = allies
+	clan["enemies"] = enemies
+	save_clan()
+
+
+## Свой ли игрок (запрет friendly fire)
+func is_clanmate(pname: String) -> bool:
+	if not in_clan():
+		return false
+	for m in clan_members():
+		if String(m["name"]) == pname:
+			return true
+	return false
+
+
+func clan_say(text: String) -> void:
+	if not in_clan() or text.strip_edges() == "":
+		return
+	clan_chat.append({"who": player_name, "text": text.strip_edges(), "t": now_ts()})
+	if clan_chat.size() > 60:
+		clan_chat.pop_front()
+	save_clan()
+
+
+func save_clan() -> void:
+	var cfg := ConfigFile.new()
+	cfg.load(active_save_path())
+	cfg.set_value("clan", "data", clan)
+	cfg.set_value("clan", "chat", clan_chat)
+	cfg.set_value("clan", "invites", clan_invites)
+	cfg.save(active_save_path())
+
+
+func load_clan() -> void:
+	var cfg := ConfigFile.new()
+	if cfg.load(active_save_path()) != OK:
+		return
+	var d: Variant = cfg.get_value("clan", "data", {})
+	clan = d if d is Dictionary else {}
+	var ch: Variant = cfg.get_value("clan", "chat", [])
+	clan_chat = ch if ch is Array else []
+	var iv: Variant = cfg.get_value("clan", "invites", [])
+	clan_invites = iv if iv is Array else []
+
+
 # --- сохранение инвентаря ---
 
 func save_inventory() -> void:
@@ -653,6 +871,12 @@ func save_inventory() -> void:
 	cfg.set_value("inv", "equipped", equipped)
 	cfg.set_value("inv", "hotbar", hotbar)
 	cfg.set_value("map", "markers", map_markers)
+	# базы игрока (без ссылок на узлы — только данные)
+	var st_data: Array = []
+	for st in structures:
+		st_data.append({"kind": String(st["kind"]), "pos": st["pos"], "rot": float(st["rot"]),
+			"tier": int(st["tier"]), "hp": float(st.get("hp", 250.0)), "owner": String(st.get("owner", player_name))})
+	cfg.set_value("base", "structures", st_data)
 	cfg.save(path)
 
 
@@ -673,6 +897,9 @@ func load_inventory() -> bool:
 	water = int(cfg.get_value("res", "water", water))
 	items = cfg.get_value("inv", "items", {})
 	equipped = cfg.get_value("inv", "equipped", {})
+	var sd: Variant = cfg.get_value("base", "structures", [])
+	if sd is Array:
+		saved_structures = sd
 	var mk: Variant = cfg.get_value("map", "markers", [])
 	if mk is Array:
 		map_markers = mk

@@ -193,6 +193,17 @@ func _draw_map() -> void:
 		_canvas.draw_rect(Rect2(_to_screen(p3.x, p3.z) - Vector2(3, 3), Vector2(6, 6)),
 			Color(0.55, 0.85, 1.0, 0.95), true)
 
+	# активные мировые события
+	var evn := get_tree().get_first_node_in_group("world_events")
+	if evn != null and evn.has_method("markers"):
+		for e in evn.markers():
+			var ep: Vector3 = e["pos"]
+			var esp := _to_screen(ep.x, ep.z)
+			_canvas.draw_circle(esp, 15.0, Color(0.9, 0.25, 0.2, 0.35))
+			_canvas.draw_arc(esp, 15.0, 0, TAU, 22, Color(1.0, 0.4, 0.2), 2.5)
+			_canvas.draw_string(font, esp + Vector2(-30, -20), String(e["name"]),
+				HORIZONTAL_ALIGNMENT_LEFT, -1, 12, Color(1.0, 0.6, 0.4))
+
 	# метки игрока
 	for mk in GameState.map_markers:
 		var mv: Vector2 = Vector2(float(mk["x"]), float(mk["z"]))

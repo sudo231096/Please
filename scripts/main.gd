@@ -83,6 +83,146 @@ func _ready() -> void:
 	_build_hud()
 	_spawn_animals()
 	_setup_multiplayer()
+	_restore_base()
+	_spawn_bandits()
+	_setup_events()
+
+
+const BanditScr := preload("res://scripts/bandit.gd")
+const EventsScr := preload("res://scripts/world_events.gd")
+
+var _events: Node3D = null
+
+
+## Восстановление базы игрока из сохранения
+func _restore_base() -> void:
+	GameState.structures.clear()
+	if GameState.saved_structures.is_empty():
+		return
+	for d in GameState.saved_structures:
+		var kind: String = String(d["kind"])
+		if not GameState.BUILD_CATALOG.has(kind):
+			continue
+		var pos: Vector3 = d["pos"]
+		var node := Node3D.new()
+		node.position = pos
+		node.rotation.y = float(d.get("rot", 0.0))
+		add_child(node)
+		_make_building(kind, node, false, int(d.get("tier", 0)))
+		_add_build_collision(node, kind)
+		_set_lod(node, 220.0)
+		GameState.structures.append({"kind": kind, "pos": pos, "rot": float(d.get("rot", 0.0)),
+			"tier": int(d.get("tier", 0)), "hp": float(d.get("hp", 250.0)),
+			"owner": String(d.get("owner", GameState.player_name)), "node": node})
+
+
+## NPC-бандиты: сложность зависит от опасности зоны
+func _spawn_bandits() -> void:
+	# у монументов — сильные, в лесу — слабые
+	for m in MONUMENTS:
+		var mp: Vector3 = m["pos"]
+		var n := 2 + _rng.randi() % 2
+		for i in range(n):
+			var x: float = mp.x + _rng.randf_range(-26.0, 26.0)
+			var z: float = mp.z + _rng.randf_range(-26.0, 26.0)
+			if not _on_land(x, z):
+				continue
+			_make_bandit(x, z, 2)
+	# бродяги по карте
+	for i in range(7):
+		var pos := _grid_spot(30.0, 12.0)
+		_make_bandit(pos.x, pos.z, _rng.randi() % 2)
+
+
+func _make_bandit(x: float, z: float, tier: int) -> Node3D:
+	var b: CharacterBody3D = BanditScr.new()
+	add_child(b)
+	b.global_position = Vector3(x, _surface_height(x, z), z)
+	b.setup(tier)
+	b.died.connect(func(t: int) -> void: _on_bandit_died(t))
+	return b
+
+
+func _on_bandit_died(tier: int) -> void:
+	GameState.kills += 1
+	# через время появляется новый бандит в другом месте
+	await get_tree().create_timer(60.0).timeout
+	if not is_inside_tree():
+		return
+	var pos := _grid_spot(30.0, 12.0)
+	_make_bandit(pos.x, pos.z, tier)
+
+
+func _setup_events() -> void:
+	_events = EventsScr.new()
+	_events.name = "WorldEvents"
+	add_child(_events)
+
+
+## Урон постройке рейдовым зарядом. Возвращает описание результата.
+func raid_explode(origin: Vector3, tool_id: String) -> String:
+	if not GameState.RAID_TOOLS.has(tool_id):
+		return "Неизвестный заряд"
+	if GameState.count(tool_id) <= 0:
+		return "Нет заряда: " + String(GameState.RAID_TOOLS[tool_id]["name"])
+	var info: Dictionary = GameState.RAID_TOOLS[tool_id]
+	var radius: float = float(info["radius"])
+	var dmg: float = float(info["dmg"])
+	# ищем постройки в радиусе
+	var hit: Array = []
+	for st in GameState.structures:
+		var sp: Vector3 = st["pos"]
+		if sp.distance_to(origin) <= radius + 1.5:
+			hit.append(st)
+	if hit.is_empty():
+		return "Рядом нет построек"
+	GameState.remove_item(tool_id, 1)
+	_explosion_fx(origin, radius)
+	var destroyed := 0
+	var damaged := 0
+	for st in hit:
+		var tier: int = int(st["tier"])
+		# камень держит вдвое лучше
+		var resist: float = 1.0 if tier == 0 else 0.5
+		st["hp"] = float(st.get("hp", GameState.BUILD_HP[tier])) - dmg * resist
+		if float(st["hp"]) <= 0.0:
+			var n = st.get("node")
+			if n != null and is_instance_valid(n):
+				n.queue_free()
+			destroyed += 1
+		else:
+			damaged += 1
+	for st in hit:
+		if float(st.get("hp", 1.0)) <= 0.0:
+			GameState.structures.erase(st)
+	GameState.save_inventory()
+	return "Взрыв: разрушено %d, повреждено %d" % [destroyed, damaged]
+
+
+func _explosion_fx(pos: Vector3, radius: float) -> void:
+	var root := Node3D.new()
+	root.position = pos
+	add_child(root)
+	for i in range(7):
+		var mi := MeshInstance3D.new()
+		var sm := SphereMesh.new()
+		var r: float = radius * _rng.randf_range(0.3, 0.7)
+		sm.radius = r
+		sm.height = r * 2.0
+		mi.mesh = sm
+		var mt := StandardMaterial3D.new()
+		mt.albedo_color = Color(1.0, 0.55, 0.15, 0.8)
+		mt.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+		mt.emission_enabled = true
+		mt.emission = Color(1.0, 0.45, 0.08)
+		mi.material_override = mt
+		mi.position = Vector3(_rng.randf_range(-2, 2), _rng.randf_range(0.5, 3.0), _rng.randf_range(-2, 2))
+		mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		root.add_child(mi)
+	var tw := create_tween()
+	tw.tween_property(root, "scale", Vector3(2.2, 2.2, 2.2), 0.5)
+	tw.parallel().tween_property(root, "modulate:a", 0.0, 0.5)
+	tw.tween_callback(root.queue_free)
 
 
 func _setup_multiplayer() -> void:
@@ -1848,7 +1988,8 @@ func _place_building(kind: String, origin: Vector3, look_dir: Vector3, rot: floa
 	# коллизия постройки, чтобы сквозь неё нельзя было пройти
 	_add_build_collision(node, kind)
 	_set_lod(node, 220.0)
-	GameState.structures.append({"kind": kind, "pos": pos, "rot": rot, "tier": 0, "node": node})
+	GameState.structures.append({"kind": kind, "pos": pos, "rot": rot, "tier": 0,
+		"hp": GameState.BUILD_HP[0], "owner": GameState.player_name, "node": node})
 	GameState.save_inventory()
 	return true
 
@@ -2015,6 +2156,7 @@ func upgrade_near(origin: Vector3) -> String:
 	_set_lod(node, 220.0)
 	st2["node"] = node
 	st2["tier"] = 1
+	st2["hp"] = GameState.BUILD_HP[1]
 	GameState.save_inventory()
 	return String(GameState.BUILD_CATALOG.get(kind, {}).get("name", kind))
 
@@ -2044,6 +2186,11 @@ func _process(delta: float) -> void:
 	_update_day_night(delta)
 	_update_weather(delta)
 	GameState.tick_craft(delta)
+	# урон от заражённых зон
+	if _events and _player and is_instance_valid(_player):
+		var hz: float = _events.tick_hazards(_player.global_position, delta)
+		if hz > 0.0 and _player.has_method("take_damage"):
+			_player.take_damage(hz, null)
 	if not GameState.build_mode:
 		if _ghost:
 			_ghost.queue_free()

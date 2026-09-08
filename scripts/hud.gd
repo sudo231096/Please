@@ -32,6 +32,7 @@ func bind(p: Node3D) -> void:
 
 func _ready() -> void:
 	layer = 10
+	add_to_group("hud")
 	_build()
 	refresh()
 
@@ -163,6 +164,8 @@ func _build_left(root: Control) -> void:
 	col.add_child(_side_button("🗺 КАРТА", Vector2(150, 46), func() -> void:
 		_go("res://scenes/Map.tscn")))
 	col.add_child(_side_button("🏠 СТРОИТЬ", Vector2(150, 46), _toggle_build))
+	col.add_child(_side_button("⚔ КЛАН", Vector2(150, 46), func() -> void:
+		_go("res://scenes/Clan.tscn")))
 	col.add_child(_side_button("☰ МЕНЮ", Vector2(150, 46), func() -> void:
 		_go("res://scenes/Players.tscn")))
 
@@ -198,6 +201,11 @@ func _build_right(root: Control) -> void:
 	grid.add_child(_side_button("⤒\nПРЫЖОК", Vector2(82, 70), func() -> void:
 		if _player:
 			_player.set_meta("mob_jump", true)))
+	var raid := _side_button("💣\nРЕЙД", Vector2(82, 70), _do_raid)
+	raid.tooltip_text = "Подорвать постройку рейдовым зарядом"
+	grid.add_child(raid)
+	var loot := _side_button("📦\nСОБРАТЬ", Vector2(82, 70), _loot_event)
+	grid.add_child(loot)
 
 
 func _build_bottom(root: Control) -> void:
@@ -365,6 +373,51 @@ func _toggle_build() -> void:
 	_build_panel.visible = GameState.build_mode
 	if GameState.build_mode:
 		_refresh_build_items()
+
+
+## Подрыв чужой постройки рейдовым зарядом (нужен предмет в инвентаре)
+func _do_raid() -> void:
+	var terrain := get_tree().get_first_node_in_group("terrain")
+	if terrain == null or _player == null or not terrain.has_method("raid_explode"):
+		return
+	# берём самый мощный доступный заряд
+	var tool_id := ""
+	for t in ["explosive", "satchel", "torch_raid"]:
+		if GameState.count(t) > 0:
+			tool_id = t
+			break
+	if tool_id == "":
+		toast("Нет рейдовых зарядов — скрафти их в разделе «Рейд»")
+		return
+	var fwd := -_player.global_transform.basis.z
+	fwd.y = 0.0
+	var target: Vector3 = _player.global_position + fwd.normalized() * 3.0
+	toast(terrain.raid_explode(target, tool_id))
+	refresh()
+
+
+## Собрать лут мирового события рядом
+func _loot_event() -> void:
+	var ev := get_tree().get_first_node_in_group("world_events")
+	if ev == null or _player == null:
+		toast("Рядом нечего собирать")
+		return
+	# сначала пробуем аирдроп
+	for node in get_tree().get_nodes_in_group("terrain"):
+		pass
+	var msg: String = ev.try_loot(_player.global_position)
+	if msg == "":
+		# может рядом аирдроп
+		for e in ev.active:
+			if String(e["kind"]) != "airdrop":
+				continue
+			var drop = e.get("node")
+			if drop != null and is_instance_valid(drop) and drop.has_method("is_ready") and drop.is_ready():
+				if drop.crate_position().distance_to(_player.global_position) < 6.0:
+					msg = "Аирдроп вскрыт: " + drop.open()
+					break
+	toast(msg if msg != "" else "Рядом нечего собирать")
+	refresh()
 
 
 func _demolish() -> void:
