@@ -1,76 +1,79 @@
 extends Control
-## Загрузочный экран: случайный совет + переход в игру.
+## Загрузочный экран: совет + прогресс, затем переход в игру.
+
+const Kit := preload("res://scripts/ui_kit.gd")
 
 const TIPS := [
 	"Руби деревья — дерево нужно почти для всего.",
-	"Следи за голодом: если он на нуле, теряешь здоровье.",
-	"Кабан атакует только если подойти близко. Медведь — всегда.",
-	"Собери камень и дерево, чтобы скрафтить топор.",
-	"Топор удваивает добычу дерева.",
-	"Кирка удваивает добычу камня и руды.",
-	"Копьё и лук повышают твой урон.",
-	"Сера и железо нужны для будущих крафтов.",
-	"Убил зверя — получил мясо. Съешь его через хотбар или кнопку «ЕСТЬ/ПИТЬ».",
-	"Забирайся на горы — оттуда видно всю пустошь.",
-	"Нажимай C, чтобы открыть меню крафта.",
+	"Следи за голодом: на нуле начнёшь терять здоровье.",
+	"Кабан атакует, только если подойти близко. Медведь — всегда.",
+	"Собери дерево и камень, чтобы скрафтить топор.",
+	"Топор удваивает добычу дерева, кирка — камня и руды.",
+	"Открой строительство и поставь фундамент — с него начинается база.",
+	"Зелёный контур постройки — можно ставить, красный — нельзя.",
+	"Постройки можно улучшать до камня и разбирать с возвратом ресурсов.",
+	"Ставь метки на карте, чтобы не потерять базу.",
+	"Разбивай бочки — из них сыпется скрап.",
+	"Подойди к ящику и нажми «ВЗЯТЬ», чтобы забрать лут.",
+	"В монументах лежат лучшие ящики — но там опасно.",
 	"Построй верстак, чтобы изучать технологии за скрап.",
-	"Разбивай бочки — из них сыпется скрап (10–50).",
-	"Подойди к ящику и нажми E, чтобы забрать лут.",
-	"Загляни в монументы — там ящики с водой, едой и металлом.",
+	"Компас сверху показывает, куда ты смотришь.",
 ]
+
+var _bar: ProgressBar
+var _t := 0.0
 
 
 func _ready() -> void:
 	set_anchors_preset(Control.PRESET_FULL_RECT)
+	Input.set_mouse_mode(Input.MOUSE_MODE_VISIBLE)
 	_build()
-	# короткая пауза, затем игра
-	await get_tree().create_timer(2.0).timeout
-	_start()
 
 
 func _build() -> void:
 	var bg := ColorRect.new()
-	bg.color = Color(0.08, 0.1, 0.09)
+	bg.color = Color(0.05, 0.055, 0.065)
 	bg.set_anchors_preset(Control.PRESET_FULL_RECT)
 	add_child(bg)
 
-	var title := Label.new()
-	title.text = "SCRAPLANDS"
-	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	title.anchor_left = 0.05
-	title.anchor_right = 0.95
-	title.anchor_top = 0.3
-	title.anchor_bottom = 0.42
-	title.add_theme_font_size_override("font_size", 52)
-	title.modulate = Color(0.95, 0.85, 0.6)
-	add_child(title)
+	var col := VBoxContainer.new()
+	col.set_anchors_preset(Control.PRESET_CENTER)
+	col.offset_left = -320
+	col.offset_right = 320
+	col.offset_top = -120
+	col.offset_bottom = 120
+	col.add_theme_constant_override("separation", 16)
+	add_child(col)
 
-	# случайный совет
-	var tip: String = TIPS[randi() % TIPS.size()]
-	var tip_label := Label.new()
-	tip_label.text = "Совет: " + tip
-	tip_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	tip_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
-	tip_label.anchor_left = 0.1
-	tip_label.anchor_right = 0.9
-	tip_label.anchor_top = 0.45
-	tip_label.anchor_bottom = 0.65
-	tip_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	tip_label.add_theme_font_size_override("font_size", 26)
-	tip_label.modulate = Color(0.85, 0.9, 0.85)
-	add_child(tip_label)
+	var t := Kit.label("SCRAPLANDS", 52, Kit.ACCENT)
+	t.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	col.add_child(t)
 
-	var loading := Label.new()
-	loading.text = "Загрузка..."
-	loading.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	loading.anchor_top = 1.0
-	loading.anchor_bottom = 1.0
-	loading.offset_top = -80
-	loading.offset_bottom = -40
-	loading.add_theme_font_size_override("font_size", 22)
-	loading.modulate = Color(0.6, 0.65, 0.6)
-	add_child(loading)
+	var srv := "Одиночный мир"
+	if GameState.active_server_id > 0:
+		srv = "Сервер %d" % GameState.active_server_id
+	var sl := Kit.label(srv, 18, Kit.GOLD)
+	sl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	col.add_child(sl)
+
+	var tip := Kit.label(TIPS[randi() % TIPS.size()], 17, Kit.TXT)
+	tip.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	tip.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	tip.custom_minimum_size = Vector2(0, 60)
+	col.add_child(tip)
+
+	_bar = Kit.bar(0, 100, Kit.ACCENT, 14.0)
+	col.add_child(_bar)
+
+	var l := Kit.label("Загрузка мира…", 14, Kit.TXT_DIM)
+	l.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	col.add_child(l)
 
 
-func _start() -> void:
-	get_tree().change_scene_to_file("res://scenes/Main.tscn")
+func _process(delta: float) -> void:
+	_t += delta
+	_bar.value = minf(100.0, _t / 1.6 * 100.0)
+	if _t >= 1.7:
+		set_process(false)
+		GameState.run_active = true
+		get_tree().change_scene_to_file("res://scenes/Main.tscn")

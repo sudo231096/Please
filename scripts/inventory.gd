@@ -426,13 +426,43 @@ func _fill_cell(cell: Panel, id: String, count: int, selected: bool = false, bad
 # ---------- взаимодействие ----------
 
 func _on_grid_input(e: InputEvent, index: int) -> void:
-	if not (e is InputEventMouseButton and e.pressed):
+	if not (e is InputEventMouseButton):
 		return
 	var mb := e as InputEventMouseButton
-	if mb.button_index == MOUSE_BUTTON_LEFT:
-		_grid_click(index)
-	elif mb.button_index == MOUSE_BUTTON_RIGHT:
+	if mb.button_index == MOUSE_BUTTON_RIGHT and mb.pressed:
 		_split(index)
+		return
+	if mb.button_index != MOUSE_BUTTON_LEFT:
+		return
+	if mb.pressed:
+		# начало перетаскивания: берём предмет "в руку"
+		var id := _id_at(index)
+		if id != "" and GameState.held.is_empty():
+			_sel_id = id
+			_drag_from = index
+			var n: int = GameState.count(id)
+			if GameState.remove_item(id, n):
+				GameState.held = {"id": id, "count": n}
+			_refresh()
+	else:
+		# отпустили над ячейкой — кладём сюда
+		_drop_held()
+
+
+var _drag_from := -1
+
+
+## Положить предмет из «руки» обратно в инвентарь
+func _drop_held() -> void:
+	if GameState.held.is_empty():
+		return
+	var hid: String = String(GameState.held["id"])
+	var hc: int = int(GameState.held["count"])
+	GameState.held = {}
+	GameState.add_item(hid, hc)
+	_drag_from = -1
+	GameState.save_inventory()
+	_refresh()
 
 
 func _grid_click(index: int) -> void:
@@ -469,7 +499,22 @@ func _split(index: int) -> void:
 
 
 func _on_equip_input(e: InputEvent, slot: String) -> void:
-	if not (e is InputEventMouseButton and e.pressed and (e as InputEventMouseButton).button_index == MOUSE_BUTTON_LEFT):
+	if not (e is InputEventMouseButton and (e as InputEventMouseButton).button_index == MOUSE_BUTTON_LEFT):
+		return
+	var mb := e as InputEventMouseButton
+	# отпустили перетаскиваемый предмет над слотом — пробуем надеть
+	if not mb.pressed and not GameState.held.is_empty():
+		var hid: String = String(GameState.held["id"])
+		var hc: int = int(GameState.held["count"])
+		GameState.held = {}
+		GameState.add_item(hid, hc)
+		if GameState.equip_slot_of(hid) == slot:
+			GameState.equip_item(hid)
+			_toast("Надето: " + GameState.item_name(hid))
+		GameState.save_inventory()
+		_refresh()
+		return
+	if not mb.pressed:
 		return
 	if GameState.equipped.has(slot):
 		GameState.unequip(slot)
@@ -479,7 +524,20 @@ func _on_equip_input(e: InputEvent, slot: String) -> void:
 
 
 func _on_hotbar_input(e: InputEvent, index: int) -> void:
-	if not (e is InputEventMouseButton and e.pressed and (e as InputEventMouseButton).button_index == MOUSE_BUTTON_LEFT):
+	if not (e is InputEventMouseButton and (e as InputEventMouseButton).button_index == MOUSE_BUTTON_LEFT):
+		return
+	var mbh := e as InputEventMouseButton
+	# отпустили перетаскиваемый предмет над слотом хотбара — назначаем
+	if not mbh.pressed and not GameState.held.is_empty():
+		var hid: String = String(GameState.held["id"])
+		var hc: int = int(GameState.held["count"])
+		GameState.held = {}
+		GameState.add_item(hid, hc)
+		GameState.hotbar[index] = hid
+		GameState.save_inventory()
+		_refresh()
+		return
+	if not mbh.pressed:
 		return
 	# если выбран предмет в сетке — назначаем его в этот слот
 	if _sel_id != "":
@@ -731,6 +789,11 @@ func _process(delta: float) -> void:
 
 
 func _input(e: InputEvent) -> void:
+	# отпустили кнопку вне ячеек — предмет возвращается в инвентарь
+	if e is InputEventMouseButton and not (e as InputEventMouseButton).pressed \
+			and (e as InputEventMouseButton).button_index == MOUSE_BUTTON_LEFT \
+			and not GameState.held.is_empty():
+		_drop_held()
 	if e is InputEventKey and e.pressed and not e.echo:
 		var k := e as InputEventKey
 		if k.keycode == KEY_ESCAPE or k.keycode == KEY_TAB or k.keycode == KEY_I:
