@@ -7,7 +7,9 @@ const JUMP_V := 5.2
 const GRAV := 14.0
 const ATTACK_RANGE := 2.6
 const ATTACK_DMG := 30.0
-const ATTACK_CD := 0.55
+const ATTACK_CD := 0.62      # пауза между ударами (без спама)
+const SWING_TIME := 0.42     # полная длительность взмаха
+const SWING_HIT_AT := 0.42   # доля взмаха, на которой наносится урон (момент контакта)
 const EYE_HEIGHT := 1.7
 const CROUCH_EYE := 1.0
 const FEET := 0.85  # смещение от центра до подошв
@@ -19,12 +21,16 @@ var _vy := 0.0
 var _grounded := true
 var _bob_t := 0.0
 var _swing_t := 0.0
+var _swing_hit := false      # урон в этом взмахе уже нанесён
+var _recoil := 0.0           # отдача камеры после контакта
+var _hit_shake := 0.0        # тряска при попадании
 var _base_cam := Vector3(0, EYE_HEIGHT, 0)
 var _crouching := false
 var _target_eye := EYE_HEIGHT
 var _hud_ref: CanvasLayer = null
 var _tool: Node3D = null
 var _tool_key := ""
+var _tool_home := Vector3(0.42, -0.42, -0.55)
 
 signal died
 
@@ -58,7 +64,8 @@ func _build_tool() -> void:
 	if _tool:
 		_tool.queue_free()
 	_tool = Node3D.new()
-	_tool.position = Vector3(0.42, -0.42, -0.55)  # точка крепления у «кисти» (внизу справа камеры)
+	_tool_home = Vector3(0.42, -0.42, -0.55)      # точка покоя «кисти» (внизу справа камеры)
+	_tool.position = _tool_home
 	_cam.add_child(_tool)
 	var key := ""
 	if GameState.selected_slot >= 0 and GameState.selected_slot < GameState.hotbar.size():
@@ -184,6 +191,11 @@ func _ground_height() -> float:
 
 func _physics_process(delta: float) -> void:
 	_attack_cd = maxf(0.0, _attack_cd - delta)
+	# ход взмаха и момент контакта (урон строго синхронизирован с анимацией)
+	if _swing_t > 0.0:
+		_swing_t = maxf(0.0, _swing_t - delta)
+		if not _swing_hit and (1.0 - _swing_t / SWING_TIME) >= SWING_HIT_AT:
+			_apply_hit()
 	_hurt_cd = maxf(0.0, _hurt_cd - delta)
 	_update_tool()
 
@@ -312,44 +324,107 @@ func _animate_cam(delta: float, moving: float) -> void:
 		_bob_t = 0.0
 		_base_cam = _base_cam.lerp(Vector3(0, eye, 0), delta * 12.0)
 
-	# анимация удара — замах камеры + инструмента
+	# --- анимация удара: замах, резкий рывок вперёд, плавный возврат ---
 	if _swing_t > 0.0:
-		_swing_t -= delta
-		var k := _swing_t / 0.28  # 1 -> 0
-		var dip := sin(k * PI) * 0.12
-		_cam.position = _base_cam + Vector3(0, -dip, 0)
-		_cam.rotation.z = sin(k * PI) * 0.06
+		# p: 0 в начале взмаха -> 1 в конце
+		var p: float = clampf(1.0 - _swing_t / SWING_TIME, 0.0, 1.0)
+		var swing_x := 0.0    # наклон инструмента (замах/удар)
+		var push_z := 0.0     # движение вперёд
+		var drop_y := 0.0     # опускание руки
+		var roll := 0.0       # доворот кисти
+		if p < 0.38:
+			# ФАЗА 1 — замах назад-вверх, с разгоном (ease-in)
+			var a: float = p / 0.38
+			var e: float = a * a
+			swing_x = e * 0.95
+			push_z = e * 0.16
+			drop_y = -e * 0.05
+			roll = e * 0.28
+		elif p < 0.62:
+			# ФАЗА 2 — резкий удар вперёд-вниз (быстрая, мощная)
+			var a2: float = (p - 0.38) / 0.24
+			var e2: float = 1.0 - pow(1.0 - a2, 3.0)   # ease-out, резкий старт
+			swing_x = lerpf(0.95, -1.35, e2)
+			push_z = lerpf(0.16, -0.30, e2)
+			drop_y = lerpf(-0.05, 0.12, e2)
+			roll = lerpf(0.28, -0.22, e2)
+		else:
+			# ФАЗА 3 — плавный возврат в исходное
+			var a3: float = (p - 0.62) / 0.38
+			var e3: float = a3 * a3 * (3.0 - 2.0 * a3)  # smoothstep
+			swing_x = lerpf(-1.35, 0.0, e3)
+			push_z = lerpf(-0.30, 0.0, e3)
+			drop_y = lerpf(0.12, 0.0, e3)
+			roll = lerpf(-0.22, 0.0, e3)
 		if _tool:
-			_tool.rotation.x = -sin(k * PI) * 1.2  # замах инструмента
+			_tool.rotation.x = swing_x
+			_tool.rotation.z = roll
+			# лёгкое покачивание кисти во время взмаха
+			_tool.position = _tool_home + Vector3(
+				sin(p * PI * 2.0) * 0.03,
+				drop_y * 0.5,
+				push_z)
+		# камера слегка реагирует: подсядь на замахе, толчок на ударе
+		var cam_dip: float = -drop_y * 0.35 + _recoil * 0.6
+		_cam.position = _base_cam + Vector3(0, -cam_dip, 0)
+		_cam.rotation.z = roll * 0.10 + _hit_shake * 0.5
 	else:
-		_cam.position = _base_cam
-		_cam.rotation.z = 0.0
 		if _tool:
-			_tool.rotation.x = 0.0
+			# мягко возвращаем инструмент на место
+			_tool.rotation.x = lerpf(_tool.rotation.x, 0.0, delta * 14.0)
+			_tool.rotation.z = lerpf(_tool.rotation.z, 0.0, delta * 14.0)
+			_tool.position = _tool.position.lerp(_tool_home, delta * 14.0)
+		_cam.position = _base_cam + Vector3(0, -_recoil * 0.6, 0)
+		_cam.rotation.z = _hit_shake * 0.5
+
+	# затухание отдачи и тряски от попадания
+	_recoil = lerpf(_recoil, 0.0, delta * 9.0)
+	_hit_shake = lerpf(_hit_shake, 0.0, delta * 11.0)
 
 
 func _attack() -> void:
+	# запускаем взмах; урон наносится в момент контакта (_apply_hit)
+	if _swing_t > 0.0:
+		return
 	_attack_cd = ATTACK_CD
-	_swing_t = 0.28  # замах
+	_swing_t = SWING_TIME
+	_swing_hit = false
+
+
+## Момент контакта: вызывается из _physics_process в середине взмаха
+func _apply_hit() -> void:
+	_swing_hit = true
 	var fwd := -_cam.global_transform.basis.z
 	fwd.y = 0.0
 	fwd = fwd.normalized()
-	# сначала — добыча (дерево/камень/руда впереди)
+	var connected := false
+	# сначала — добыча ресурса впереди
 	var terrain := get_tree().get_first_node_in_group("terrain")
 	if terrain and terrain.has_method("_harvest"):
 		var res: String = terrain._harvest(global_position, fwd)
 		if res != "":
-			return  # попали по ресурсу — не бьём зверей
-	# затем — урон зверям
-	var dmg := GameState.attack_damage()
-	for e in get_tree().get_nodes_in_group("enemies"):
-		var en := e as Node3D
-		var to := en.global_position - global_position
-		to.y = 0.0
-		var d := to.length()
-		if d <= ATTACK_RANGE and d > 0.01:
-			if fwd.dot(to.normalized()) > 0.4 and en.has_method("take_damage"):
-				en.take_damage(dmg)
+			connected = true
+	# затем — урон врагам
+	if not connected:
+		var dmg := GameState.attack_damage()
+		for e in get_tree().get_nodes_in_group("enemies"):
+			var en := e as Node3D
+			if not is_instance_valid(en):
+				continue
+			var to := en.global_position - global_position
+			to.y = 0.0
+			var d := to.length()
+			if d <= ATTACK_RANGE and d > 0.01 and fwd.dot(to.normalized()) > 0.4:
+				if en.has_method("take_damage"):
+					en.take_damage(dmg)
+					connected = true
+	# отдача: по воздуху — слабая, по цели — ощутимый толчок и тряска
+	if connected:
+		_recoil = 0.075
+		_hit_shake = 0.055
+	else:
+		_recoil = 0.03
+		_hit_shake = 0.012
 
 
 func _interact() -> void:

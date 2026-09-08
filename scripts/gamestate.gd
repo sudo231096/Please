@@ -247,7 +247,7 @@ const ITEMS := {
 	"water": {"name": "Вода", "icon": "water", "stack": 50, "cat": "Еда", "desc": "Утоляет жажду."},
 	"hatchet": {"name": "Каменный топор", "icon": "hatchet", "stack": 1, "cat": "Инструменты", "desc": "Добыча дерева в 2 раза быстрее."},
 	"pickaxe": {"name": "Каменная кирка", "icon": "pickaxe", "stack": 1, "cat": "Инструменты", "desc": "Добыча камня и руды в 2 раза быстрее."},
-	"torch": {"name": "Факел", "icon": "campfire", "stack": 1, "cat": "Инструменты", "desc": "Простой источник света."},
+	"torch": {"name": "Факел", "icon": "torch", "stack": 1, "cat": "Инструменты", "desc": "Простой источник света."},
 	"spear": {"name": "Копьё", "icon": "spear", "stack": 1, "cat": "Оружие", "desc": "+50% к урону в ближнем бою."},
 	"bow": {"name": "Лук", "icon": "bow", "stack": 1, "cat": "Оружие", "desc": "+25% к урону."},
 	"arrow": {"name": "Стрела", "icon": "spear", "stack": 64, "cat": "Боеприпасы", "desc": "Боеприпас для лука."},
@@ -325,7 +325,11 @@ func reset_run() -> void:
 	workbench_built = false
 	items.clear()
 	equipped.clear()
-	hotbar = ["wood", "stone", "sulfur", "iron", "meat", "scrap"]
+	# стартовый набор как в Rust: только камень и факел
+	stone = 1
+	items["torch"] = 1
+	has_torch = true
+	hotbar = ["stone", "torch", "", "", "", ""]
 	held = {}
 	assigning_hotbar = -1
 	learned_techs.clear()
