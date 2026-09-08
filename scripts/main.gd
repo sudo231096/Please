@@ -5,7 +5,7 @@ const PlayerScr := preload("res://scripts/player.gd")
 const AnimalScr := preload("res://scripts/animal.gd")
 const HudScr := preload("res://scripts/hud.gd")
 
-const TERRAIN_N := 256        # ячеек на сторону (4 м на ячейку — детальный рельеф)
+const TERRAIN_N := 160        # ячеек на сторону (6.4 м) — втрое меньше треугольников, рельеф тот же
 const TERRAIN_SIZE := 1024.0  # метров
 const TERRAIN_CELL := TERRAIN_SIZE / float(TERRAIN_N)
 const HALF := TERRAIN_SIZE * 0.5
@@ -191,7 +191,13 @@ func _puddle_factor(x: float, z: float) -> float:
 	return 0.0
 
 
+# кэш материалов: одинаковый цвет = один материал (меньше состояний рендера)
+var _mat_cache := {}
+
 func _mat(color: Color, emissive := Color(0, 0, 0, 0)) -> StandardMaterial3D:
+	var key := "%d_%d" % [color.to_rgba32(), emissive.to_rgba32()]
+	if _mat_cache.has(key):
+		return _mat_cache[key]
 	var m := StandardMaterial3D.new()
 	m.albedo_color = color
 	m.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
@@ -200,6 +206,7 @@ func _mat(color: Color, emissive := Color(0, 0, 0, 0)) -> StandardMaterial3D:
 	if emissive.a > 0.0:
 		m.emission_enabled = true
 		m.emission = emissive
+	_mat_cache[key] = m
 	return m
 
 
@@ -535,7 +542,7 @@ func _build_sky() -> void:
 	# кинематографичная цветокоррекция: фильмический тонмаппинг + мягкий bloom
 	env.tonemap_mode = Environment.TONE_MAPPER_FILMIC
 	env.tonemap_exposure = 1.08
-	env.glow_enabled = true
+	env.glow_enabled = false   # свечение дорого для мобильного GPU
 	env.glow_intensity = 0.35
 	env.glow_bloom = 0.06
 	env.glow_hdr_threshold = 1.1
@@ -549,7 +556,7 @@ func _build_sky() -> void:
 	env.fog_density = 0.001
 	env.fog_sky_affect = 0.1
 	# SSAO — затенение в углублениях и у оснований объектов (глубина, как в Rust)
-	env.ssao_enabled = true
+	env.ssao_enabled = false   # SSAO очень дорог на телефоне
 	env.ssao_radius = 1.2
 	env.ssao_intensity = 1.2
 	env.ssao_power = 2.0
@@ -565,9 +572,9 @@ func _build_sky() -> void:
 	sun.light_color = Color(1.0, 0.95, 0.85)  # тёплый солнечный свет
 	sun.light_energy = 1.6
 	sun.shadow_enabled = true
-	sun.directional_shadow_mode = DirectionalLight3D.SHADOW_PARALLEL_4_SPLITS
-	sun.directional_shadow_max_distance = 160.0
-	sun.directional_shadow_blend_splits = true
+	sun.directional_shadow_mode = DirectionalLight3D.SHADOW_PARALLEL_2_SPLITS
+	sun.directional_shadow_max_distance = 90.0
+	sun.directional_shadow_blend_splits = false
 	sun.shadow_normal_bias = 1.2
 	add_child(sun)
 	_sun = sun
@@ -636,8 +643,17 @@ func _build_weather() -> void:
 	add_child(_rain)
 
 
+var _dn_acc := 0.0
+
 func _update_day_night(delta: float) -> void:
 	_time_of_day = fmod(_time_of_day + delta / _day_length, 1.0)
+	# цвета неба/света меняются медленно — пересчитываем 5 раз в секунду, а не 60
+	_dn_acc += delta
+	if _dn_acc < 0.2:
+		if _sun_disc and _player and _sun_disc.is_inside_tree() and _sun:
+			_sun_disc.global_position = _player.global_position + (-_sun.global_transform.basis.z) * 400.0
+		return
+	_dn_acc = 0.0
 	var elev := sin(_time_of_day * TAU - PI * 0.5)  # -1 ночь .. 1 день
 	# плавный фактор дневного света (с рассветом/закатом)
 	var dl := clampf((elev + 0.12) / 0.28, 0.0, 1.0)
@@ -920,6 +936,9 @@ func _build_trees() -> void:
 		inst.multimesh = mm
 		inst.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 		inst.name = names[species]
+		# LOD по дальности: далёкие деревья не рисуются
+		inst.visibility_range_end = 260.0
+		inst.visibility_range_end_margin = 30.0
 		add_child(inst)
 		_trees_mm_list.append(mm)
 	# --- два скачанных вида деревьев (Quaternius, CC0): берёза и клён ---
@@ -978,8 +997,8 @@ func _build_downloaded_trees(path: String, count: int, hmin: float, hmax: float,
 	node.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	node.name = node_name
 	# LOD по дальности: далёкие деревья этого вида не рисуются (производительность)
-	node.visibility_range_end = 320.0
-	node.visibility_range_end_margin = 40.0
+	node.visibility_range_end = 200.0
+	node.visibility_range_end_margin = 30.0
 	add_child(node)
 	_trees_mm_list.append(mm)
 
@@ -1016,6 +1035,8 @@ func _build_rocks() -> void:
 	inst.multimesh = mm
 	inst.material_override = _terrain_material()
 	inst.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	inst.visibility_range_end = 220.0
+	inst.visibility_range_end_margin = 30.0
 	inst.name = "Rocks"
 	add_child(inst)
 	_rocks_mm = mm
@@ -1028,7 +1049,7 @@ func _build_grass() -> void:
 	var mm := MultiMesh.new()
 	mm.transform_format = MultiMesh.TRANSFORM_3D
 	mm.mesh = mesh
-	var target := 3000
+	var target := 1400
 	var placed: Array = []
 	var attempts := 0
 	while placed.size() < target and attempts < target * 8:
@@ -1072,10 +1093,20 @@ func _build_grass() -> void:
 	inst.material_override = _grass_material()
 	inst.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	# дальность прорисовки травы (оптимизация: далёкая трава не рисуется)
-	inst.visibility_range_end = 120.0
-	inst.visibility_range_end_margin = 20.0
+	inst.visibility_range_end = 85.0
+	inst.visibility_range_end_margin = 15.0
 	inst.name = "Grass"
 	add_child(inst)
+
+
+
+# LOD: скрывать мелкие объекты на расстоянии (сильно снижает draw calls)
+func _set_lod(node: Node3D, dist: float) -> void:
+	for mi in node.find_children("*", "GeometryInstance3D", true, false):
+		var g: GeometryInstance3D = mi
+		g.visibility_range_end = dist
+		g.visibility_range_end_margin = dist * 0.15
+		g.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 
 
 func _build_ores() -> void:
@@ -1093,6 +1124,7 @@ func _build_ores() -> void:
 			1: _ore_iron(container)
 			2: _ore_stone(container)
 			3: _ore_metal(container)
+		_set_lod(container, 140.0)
 
 
 # --- отдельные модели руды (основание каждого меша на y=0, стоит на земле) ---
@@ -1200,6 +1232,7 @@ func _add_barrel(x: float, z: float) -> void:
 	band.material_override = _mat(Color(0.35, 0.35, 0.38))
 	band.position = Vector3(0, 0.55, 0)
 	node.add_child(band)
+	_set_lod(node, 130.0)
 	add_child(node)
 	_barrel_spots.append({"pos": Vector3(x, y, z), "alive": true, "node": node})
 
@@ -1224,6 +1257,7 @@ func _add_lootbox(x: float, z: float) -> void:
 	lid.position = Vector3(0, 0.95, 0)
 	lid.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	node.add_child(lid)
+	_set_lod(node, 130.0)
 	add_child(node)
 	_loot_spots.append({"pos": Vector3(x, y, z), "opened": false, "node": node, "lid": lid})
 
@@ -1300,6 +1334,7 @@ func _add_monument_model(path: String, x: float, z: float) -> Node3D:
 	model.position = Vector3(x, y, z)
 	add_child(model)
 	_force_opaque(model)
+	_set_lod(model, 400.0)
 	return model
 
 

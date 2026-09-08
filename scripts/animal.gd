@@ -119,15 +119,29 @@ func _build() -> void:
 			_model.scale = Vector3.ONE * 2.3
 			_model.position = Vector3(0, 0.05, 0)
 			add_child(_model)
+			_apply_lod(110.0)
 		1:  # олень — ~1.6 м
 			_model = preload("res://models/deer.glb").instantiate()
 			_model.scale = Vector3.ONE * 0.95
 			_model.position = Vector3(0, -0.1, 0)
 			add_child(_model)
+			_apply_lod(150.0)
 		2:
 			_build_boar()
 		3:
 			_build_bear()
+
+
+
+# LOD: не рисовать животное с большого расстояния (экономит draw calls и треугольники)
+func _apply_lod(dist: float) -> void:
+	if _model == null:
+		return
+	for g in _model.find_children("*", "GeometryInstance3D", true, false):
+		var gi: GeometryInstance3D = g
+		gi.visibility_range_end = dist
+		gi.visibility_range_end_margin = dist * 0.15
+		gi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 
 
 func _build_bear() -> void:
@@ -135,6 +149,7 @@ func _build_bear() -> void:
 	# увеличен ~в 1.8 раза (было 3.5 м) — пропорции сохраняются (равномерный масштаб)
 	_model = preload("res://models/bear.glb").instantiate()
 	add_child(_model)
+	_apply_lod(200.0)
 	_fit_model(_model, 6.3)  # очень крупный медведь
 
 
