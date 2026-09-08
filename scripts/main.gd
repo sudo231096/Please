@@ -1665,69 +1665,314 @@ func _sphere_at(pos: Vector3, r: float, h: float, color: Color, parent: Node3D =
 
 
 # строит меши постройки в контейнер parent (локальные координаты от точки pos)
-func _make_building(kind: String, parent: Node3D, ghost: bool) -> void:
-	parent.scale = Vector3.ONE * 2.0  # все постройки в 2 раза больше
-	var mat_col := Color(0.42, 0.3, 0.16)
+func _make_building(kind: String, parent: Node3D, ghost: bool, tier: int = 0) -> void:
+	# tier 0 = дерево, tier 1 = камень/металл (улучшенная постройка)
+	var wood_c := Color(0.46, 0.33, 0.18)
+	var wood_d := Color(0.36, 0.25, 0.13)
+	if tier > 0:
+		wood_c = Color(0.46, 0.46, 0.48)
+		wood_d = Color(0.36, 0.36, 0.38)
+	var mat_col := wood_c
 	if ghost:
 		mat_col = Color(0.4, 1.0, 0.4, 0.45)
+	var C := func(c: Color) -> Color: return mat_col if ghost else c
+
 	match kind:
+		"foundation":
+			_box_at(Vector3(0, -0.15, 0), Vector3(3.0, 0.3, 3.0), C.call(wood_c), parent)
+			for sx in [-1.35, 1.35]:
+				for sz in [-1.35, 1.35]:
+					_box_at(Vector3(sx, -0.75, sz), Vector3(0.25, 1.2, 0.25), C.call(wood_d), parent)
+		"foundation_tri":
+			_box_at(Vector3(0.5, -0.15, 0), Vector3(2.0, 0.3, 3.0), C.call(wood_c), parent)
+			_box_at(Vector3(-0.8, -0.15, 0.7), Vector3(1.2, 0.3, 1.4), C.call(wood_c), parent)
+			_box_at(Vector3(1.2, -0.75, 1.2), Vector3(0.25, 1.2, 0.25), C.call(wood_d), parent)
+			_box_at(Vector3(1.2, -0.75, -1.2), Vector3(0.25, 1.2, 0.25), C.call(wood_d), parent)
+		"wall":
+			_box_at(Vector3(0, 1.5, 0), Vector3(3.0, 3.0, 0.2), C.call(wood_c), parent)
+			_box_at(Vector3(0, 0.1, 0), Vector3(3.0, 0.2, 0.26), C.call(wood_d), parent)
+			_box_at(Vector3(0, 2.9, 0), Vector3(3.0, 0.2, 0.26), C.call(wood_d), parent)
+		"wall_window":
+			_box_at(Vector3(0, 0.55, 0), Vector3(3.0, 1.1, 0.2), C.call(wood_c), parent)
+			_box_at(Vector3(0, 2.6, 0), Vector3(3.0, 0.8, 0.2), C.call(wood_c), parent)
+			_box_at(Vector3(-1.3, 1.6, 0), Vector3(0.4, 1.0, 0.2), C.call(wood_c), parent)
+			_box_at(Vector3(1.3, 1.6, 0), Vector3(0.4, 1.0, 0.2), C.call(wood_c), parent)
+		"wall_door":
+			_box_at(Vector3(-1.1, 1.5, 0), Vector3(0.8, 3.0, 0.2), C.call(wood_c), parent)
+			_box_at(Vector3(1.1, 1.5, 0), Vector3(0.8, 3.0, 0.2), C.call(wood_c), parent)
+			_box_at(Vector3(0, 2.7, 0), Vector3(1.4, 0.6, 0.2), C.call(wood_c), parent)
+		"floor":
+			_box_at(Vector3(0, 3.0, 0), Vector3(3.0, 0.2, 3.0), C.call(wood_c), parent)
+		"stairs":
+			for i in range(6):
+				var h: float = 0.5 + i * 0.5
+				_box_at(Vector3(0, h * 0.5, -1.25 + i * 0.5), Vector3(2.6, h, 0.5), C.call(wood_c if i % 2 == 0 else wood_d), parent)
+		"ramp":
+			var r := _box_at(Vector3(0, 0.75, 0), Vector3(3.0, 0.2, 4.2), C.call(wood_c), parent)
+			r.rotation.x = -0.35
+		"door":
+			_box_at(Vector3(0, 1.1, 0), Vector3(1.3, 2.2, 0.14), C.call(Color(0.5, 0.36, 0.2) if tier == 0 else Color(0.5, 0.5, 0.53)), parent)
+			_sphere_at(Vector3(0.5, 1.1, 0.1), 0.08, 0.16, C.call(Color(0.8, 0.7, 0.3)), parent)
+		"window_bars":
+			for i in range(4):
+				_box_at(Vector3(-0.6 + i * 0.4, 1.6, 0), Vector3(0.08, 1.0, 0.08), C.call(Color(0.45, 0.45, 0.48)), parent)
+		"box":
+			_box_at(Vector3(0, 0.4, 0), Vector3(1.1, 0.8, 0.8), C.call(Color(0.5, 0.37, 0.2)), parent)
+			_box_at(Vector3(0, 0.82, 0), Vector3(1.15, 0.08, 0.85), C.call(Color(0.38, 0.28, 0.15)), parent)
+		"locker":
+			_box_at(Vector3(0, 0.9, 0), Vector3(0.9, 1.8, 0.5), C.call(Color(0.44, 0.32, 0.18)), parent)
+			_box_at(Vector3(0, 0.9, 0.27), Vector3(0.06, 1.7, 0.04), C.call(Color(0.3, 0.22, 0.12)), parent)
 		"campfire":
 			for i in range(6):
 				var a := TAU * i / 6.0
-				_sphere_at(Vector3(cos(a) * 0.5, 0.1, sin(a) * 0.5), 0.15, 0.3, Color(0.4, 0.4, 0.42), parent)
-			_sphere_at(Vector3(0, 0.4, 0), 0.25, 0.7, Color(1.0, 0.5, 0.1), parent, Color(1.0, 0.4, 0.05))
+				_sphere_at(Vector3(cos(a) * 0.5, 0.1, sin(a) * 0.5), 0.15, 0.3, C.call(Color(0.4, 0.4, 0.42)), parent)
+			_sphere_at(Vector3(0, 0.4, 0), 0.25, 0.7, C.call(Color(1.0, 0.5, 0.1)), parent, Color(1.0, 0.4, 0.05) if not ghost else Color(0, 0, 0, 0))
 		"furnace":
-			_box_at(Vector3.ZERO, Vector3(1.0, 1.2, 1.0), Color(0.3, 0.3, 0.32), parent)
-			_box_at(Vector3(0, 1.4, 0), Vector3(0.3, 0.5, 0.3), Color(0.25, 0.25, 0.28), parent)
-		"wall":
-			_box_at(Vector3.ZERO, Vector3(2.5, 2.5, 0.2), mat_col, parent)
-		"floor":
-			_box_at(Vector3(0, -0.05, 0), Vector3(2.5, 0.1, 2.5), Color(0.45, 0.33, 0.18) if not ghost else mat_col, parent)
-		"door":
-			_box_at(Vector3.ZERO, Vector3(1.2, 2.2, 0.15), mat_col, parent)
-			_box_at(Vector3(0, 1.1, 0), Vector3(0.1, 2.2, 0.25), Color(0.35, 0.25, 0.14) if not ghost else mat_col, parent)
-		"bag":
-			_box_at(Vector3.ZERO, Vector3(0.9, 0.2, 2.0), Color(0.2, 0.35, 0.25) if not ghost else mat_col, parent)
-			_box_at(Vector3(0, 0.25, -0.9), Vector3(0.9, 0.25, 0.4), Color(0.15, 0.28, 0.2) if not ghost else mat_col, parent)
+			_box_at(Vector3(0, 0.6, 0), Vector3(1.0, 1.2, 1.0), C.call(Color(0.34, 0.34, 0.36)), parent)
+			_box_at(Vector3(0, 1.55, 0), Vector3(0.3, 0.7, 0.3), C.call(Color(0.28, 0.28, 0.3)), parent)
 		"workbench":
-			# верстак: стол + верстак
-			_box_at(Vector3.ZERO, Vector3(1.6, 0.1, 0.9), Color(0.5, 0.36, 0.2) if not ghost else mat_col, parent)
-			_box_at(Vector3(-0.6, 0, -0.3), Vector3(0.12, 0.9, 0.12), Color(0.4, 0.28, 0.16) if not ghost else mat_col, parent)
-			_box_at(Vector3(0.6, 0, -0.3), Vector3(0.12, 0.9, 0.12), Color(0.4, 0.28, 0.16) if not ghost else mat_col, parent)
-			_box_at(Vector3(-0.6, 0, 0.3), Vector3(0.12, 0.9, 0.12), Color(0.4, 0.28, 0.16) if not ghost else mat_col, parent)
-			_box_at(Vector3(0.6, 0, 0.3), Vector3(0.12, 0.9, 0.12), Color(0.4, 0.28, 0.16) if not ghost else mat_col, parent)
-			_box_at(Vector3(0, 0.35, 0), Vector3(1.3, 0.5, 0.6), Color(0.3, 0.3, 0.32) if not ghost else mat_col, parent)
+			_box_at(Vector3(0, 0.9, 0), Vector3(1.6, 0.1, 0.9), C.call(Color(0.5, 0.36, 0.2)), parent)
+			for sx in [-0.7, 0.7]:
+				for sz in [-0.35, 0.35]:
+					_box_at(Vector3(sx, 0.45, sz), Vector3(0.12, 0.9, 0.12), C.call(Color(0.4, 0.28, 0.16)), parent)
+			_box_at(Vector3(0, 1.15, 0), Vector3(1.3, 0.4, 0.6), C.call(Color(0.32, 0.32, 0.34)), parent)
+		"bag":
+			_box_at(Vector3(0, 0.1, 0), Vector3(0.9, 0.2, 2.0), C.call(Color(0.25, 0.4, 0.28)), parent)
+			_box_at(Vector3(0, 0.3, -0.9), Vector3(0.9, 0.25, 0.4), C.call(Color(0.18, 0.3, 0.22)), parent)
+		_:
+			_box_at(Vector3(0, 0.5, 0), Vector3(1.0, 1.0, 1.0), mat_col, parent)
 
 
-func _place_building(kind: String, origin: Vector3, look_dir: Vector3, rot: float = 0.0) -> void:
-	var px := roundf(origin.x + look_dir.x * 2.0)
-	var pz := roundf(origin.z + look_dir.z * 2.0)
-	var py := _surface_height(px, pz)
+## Можно ли поставить постройку в этой точке (проверка коллизий и опоры)
+func can_place_at(kind: String, pos: Vector3) -> bool:
+	var info: Dictionary = GameState.BUILD_CATALOG.get(kind, {})
+	var grid: float = float(info.get("grid", 1.0))
+	# 1) в воде строить нельзя
+	if pos.y < WATER_LEVEL + 0.2:
+		return false
+	# 2) слишком крутой склон для наземных построек
+	if String(info.get("snap", "free")) == "ground":
+		var e := 1.0
+		var dy: float = maxf(
+			absf(_surface_height(pos.x + e, pos.z) - pos.y),
+			absf(_surface_height(pos.x, pos.z + e) - pos.y))
+		if dy > 1.6:
+			return false
+	# 3) пересечение с уже поставленной постройкой
+	var min_d: float = grid * 0.75
+	for st in GameState.structures:
+		var sp: Vector3 = st["pos"]
+		if String(st["kind"]) == kind and sp.distance_to(pos) < 0.35:
+			return false
+		if absf(sp.y - pos.y) < 1.2 and Vector2(sp.x - pos.x, sp.z - pos.z).length() < min_d:
+			return false
+	# 4) не ставить внутрь деревьев и камней
+	for t in _tree_spots:
+		if bool(t["alive"]) and (t["pos"] as Vector3).distance_to(pos) < 1.6:
+			return false
+	return true
+
+
+## Привязка позиции к сетке и к существующим постройкам
+func snap_position(kind: String, want: Vector3) -> Vector3:
+	var info: Dictionary = GameState.BUILD_CATALOG.get(kind, {})
+	var grid: float = float(info.get("grid", 1.0))
+	var mode: String = String(info.get("snap", "free"))
+	var px: float = round(want.x / grid) * grid
+	var pz: float = round(want.z / grid) * grid
+	var py: float = _surface_height(px, pz)
+
+	if mode == "free":
+		px = want.x
+		pz = want.z
+		py = _surface_height(px, pz)
+		return Vector3(px, py, pz)
+
+	# ищем ближайший фундамент/пол для привязки по высоте (этажи)
+	var best_d := 4.2
+	var snapped := false
+	for st in GameState.structures:
+		var sk: String = String(st["kind"])
+		if not sk.begins_with("foundation") and sk != "floor":
+			continue
+		var sp: Vector3 = st["pos"]
+		var d: float = Vector2(sp.x - px, sp.z - pz).length()
+		if d < best_d:
+			best_d = d
+			if mode == "edge":
+				# стены встают на край плиты
+				var dx: float = px - sp.x
+				var dz: float = pz - sp.z
+				if absf(dx) > absf(dz):
+					px = sp.x + signf(dx) * grid * 0.5
+					pz = sp.z
+				else:
+					pz = sp.z + signf(dz) * grid * 0.5
+					px = sp.x
+				py = sp.y
+			elif mode == "level":
+				px = sp.x
+				pz = sp.z
+				py = sp.y
+			else:
+				py = sp.y
+			snapped = true
+	if not snapped:
+		py = _surface_height(px, pz)
+	return Vector3(px, py, pz)
+
+
+func _place_building(kind: String, origin: Vector3, look_dir: Vector3, rot: float = 0.0) -> bool:
+	var want := Vector3(origin.x + look_dir.x * 3.0, 0.0, origin.z + look_dir.z * 3.0)
+	var pos := snap_position(kind, want)
+	if not can_place_at(kind, pos):
+		return false
+	if not GameState.pay_build(kind):
+		return false
 	var node := Node3D.new()
-	node.position = Vector3(px, py, pz)
+	node.position = pos
 	node.rotation.y = rot
 	add_child(node)
-	_make_building(kind, node, false)
+	_make_building(kind, node, false, 0)
+	# коллизия постройки, чтобы сквозь неё нельзя было пройти
+	_add_build_collision(node, kind)
+	_set_lod(node, 220.0)
+	GameState.structures.append({"kind": kind, "pos": pos, "rot": rot, "tier": 0, "node": node})
+	GameState.save_inventory()
+	return true
 
 
-# строительный призрак
+func _add_build_collision(node: Node3D, kind: String) -> void:
+	var body := StaticBody3D.new()
+	body.collision_layer = 1
+	body.collision_mask = 0
+	var cs := CollisionShape3D.new()
+	var box := BoxShape3D.new()
+	match kind:
+		"foundation", "foundation_tri":
+			box.size = Vector3(3.0, 0.35, 3.0)
+			cs.position = Vector3(0, -0.15, 0)
+		"wall", "wall_window", "wall_door":
+			box.size = Vector3(3.0, 3.0, 0.25)
+			cs.position = Vector3(0, 1.5, 0)
+		"floor":
+			box.size = Vector3(3.0, 0.25, 3.0)
+			cs.position = Vector3(0, 3.0, 0)
+		"stairs", "ramp":
+			box.size = Vector3(2.8, 1.6, 3.2)
+			cs.position = Vector3(0, 0.8, 0)
+		"locker":
+			box.size = Vector3(0.9, 1.8, 0.5)
+			cs.position = Vector3(0, 0.9, 0)
+		"box", "furnace", "workbench":
+			box.size = Vector3(1.2, 1.0, 1.0)
+			cs.position = Vector3(0, 0.5, 0)
+		_:
+			return
+	cs.shape = box
+	body.add_child(cs)
+	node.add_child(body)
+
+
+## Разобрать ближайшую постройку (возврат половины ресурсов)
+func demolish_near(origin: Vector3) -> String:
+	var best := -1
+	var best_d := 4.0
+	for i in range(GameState.structures.size()):
+		var st: Dictionary = GameState.structures[i]
+		var d: float = (st["pos"] as Vector3).distance_to(origin)
+		if d < best_d:
+			best_d = d
+			best = i
+	if best < 0:
+		return ""
+	var st2: Dictionary = GameState.structures[best]
+	var nm: String = String(GameState.BUILD_CATALOG.get(st2["kind"], {}).get("name", st2["kind"]))
+	GameState.refund_build(String(st2["kind"]), int(st2["tier"]))
+	var n: Node3D = st2["node"]
+	if is_instance_valid(n):
+		n.queue_free()
+	GameState.structures.remove_at(best)
+	GameState.save_inventory()
+	return nm
+
+
+## Улучшить ближайшую постройку (дерево -> камень)
+func upgrade_near(origin: Vector3) -> String:
+	var best := -1
+	var best_d := 4.0
+	for i in range(GameState.structures.size()):
+		var st: Dictionary = GameState.structures[i]
+		if int(st["tier"]) > 0:
+			continue
+		var d: float = (st["pos"] as Vector3).distance_to(origin)
+		if d < best_d:
+			best_d = d
+			best = i
+	if best < 0:
+		return ""
+	var st2: Dictionary = GameState.structures[best]
+	var kind: String = String(st2["kind"])
+	if not GameState.can_upgrade(kind):
+		return "no_res"
+	var u: Dictionary = GameState.upgrade_cost(kind)
+	for r in u:
+		GameState.remove_item(String(r), int(u[r]))
+	var n: Node3D = st2["node"]
+	if is_instance_valid(n):
+		n.queue_free()
+	var node := Node3D.new()
+	node.position = st2["pos"]
+	node.rotation.y = float(st2["rot"])
+	add_child(node)
+	_make_building(kind, node, false, 1)
+	_add_build_collision(node, kind)
+	_set_lod(node, 220.0)
+	st2["node"] = node
+	st2["tier"] = 1
+	GameState.save_inventory()
+	return String(GameState.BUILD_CATALOG.get(kind, {}).get("name", kind))
+
+
+# строительный призрак (полупрозрачный предпросмотр)
 var _ghost: Node3D = null
+var _ghost_kind := ""
+var _ghost_ok := false
+
+
+## Может ли игрок поставить постройку прямо сейчас (для кнопки в HUD)
+func ghost_placeable() -> bool:
+	return _ghost_ok
+
+
+func _tint_ghost(node: Node3D, col: Color) -> void:
+	for mi in node.find_children("*", "MeshInstance3D", true, false):
+		var m := StandardMaterial3D.new()
+		m.albedo_color = col
+		m.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+		m.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+		m.cull_mode = BaseMaterial3D.CULL_DISABLED
+		(mi as MeshInstance3D).material_override = m
+
 
 func _process(delta: float) -> void:
 	_update_day_night(delta)
 	_update_weather(delta)
+	GameState.tick_craft(delta)
 	if not GameState.build_mode:
 		if _ghost:
 			_ghost.queue_free()
 			_ghost = null
+			_ghost_kind = ""
 		return
-	# создать/обновить призрак
-	if _ghost == null or _ghost.get_child_count() == 0:
+	# пересоздаём призрак при смене типа постройки
+	if _ghost == null or _ghost_kind != GameState.build_kind:
 		if _ghost:
 			_ghost.queue_free()
 		_ghost = Node3D.new()
 		add_child(_ghost)
 		_make_building(GameState.build_kind, _ghost, true)
+		_ghost_kind = GameState.build_kind
 	if _player:
 		var cam: Camera3D = _player.get_node_or_null("Camera3D")
 		var fwd := -(_player as Node3D).global_transform.basis.z
@@ -1735,10 +1980,15 @@ func _process(delta: float) -> void:
 			fwd = -cam.global_transform.basis.z
 		fwd.y = 0.0
 		fwd = fwd.normalized()
-		var px: float = _player.global_position.x + fwd.x * 2.0
-		var pz: float = _player.global_position.z + fwd.z * 2.0
-		# привязка к сетке 1 м
-		px = roundf(px)
-		pz = roundf(pz)
-		_ghost.position = Vector3(px, _surface_height(px, pz), pz)
+		var want := Vector3(
+			_player.global_position.x + fwd.x * 3.0, 0.0,
+			_player.global_position.z + fwd.z * 3.0)
+		var pos := snap_position(GameState.build_kind, want)
+		_ghost.position = pos
 		_ghost.rotation.y = GameState.build_rot
+		# зелёный — можно ставить, красный — нельзя (нет места или ресурсов)
+		var ok: bool = can_place_at(GameState.build_kind, pos) and GameState.can_afford_build(GameState.build_kind)
+		if ok != _ghost_ok or _ghost.get_meta("tinted", false) == false:
+			_ghost_ok = ok
+			_tint_ghost(_ghost, Color(0.35, 1.0, 0.4, 0.45) if ok else Color(1.0, 0.3, 0.25, 0.45))
+			_ghost.set_meta("tinted", true)

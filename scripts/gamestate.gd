@@ -167,6 +167,15 @@ func load_profile() -> void:
 	free_coins_at = int(cfg.get_value("prof", "coins_at", 0))
 
 var last_pos := Vector3.ZERO  # позиция игрока для карты
+var last_yaw := 0.0           # направление взгляда (для компаса и карты)
+var map_markers: Array = []   # метки игрока на карте [{x, z}]
+
+
+func add_marker(x: float, z: float) -> void:
+	map_markers.append({"x": x, "z": z})
+	if map_markers.size() > 12:
+		map_markers.pop_front()
+	save_inventory()
 var return_to_pos := false    # вернуться на сохранённую позицию (после карты)
 
 # инвентарь / hotbar
@@ -536,6 +545,91 @@ func drop_item(id: String, n: int) -> bool:
 	return remove_item(id, take)
 
 
+
+
+# ================= СТРОИТЕЛЬСТВО =================
+## Каталог строительных элементов: категория, стоимость, размер сетки, уровни улучшения.
+const BUILD_CATALOG := {
+	"foundation":  {"name": "Фундамент",      "cat": "Фундамент",     "cost": {"wood": 100}, "grid": 3.0, "snap": "ground", "up": {"stone": 150}},
+	"foundation_tri": {"name": "Фундамент угловой", "cat": "Фундамент", "cost": {"wood": 70}, "grid": 3.0, "snap": "ground", "up": {"stone": 100}},
+	"wall":        {"name": "Стена",          "cat": "Стены и пол",   "cost": {"wood": 50},  "grid": 3.0, "snap": "edge",   "up": {"stone": 80}},
+	"wall_window": {"name": "Стена с окном",  "cat": "Стены и пол",   "cost": {"wood": 60},  "grid": 3.0, "snap": "edge",   "up": {"stone": 90}},
+	"wall_door":   {"name": "Дверной проём",  "cat": "Стены и пол",   "cost": {"wood": 60},  "grid": 3.0, "snap": "edge",   "up": {"stone": 90}},
+	"floor":       {"name": "Потолок / пол",  "cat": "Стены и пол",   "cost": {"wood": 80},  "grid": 3.0, "snap": "level",  "up": {"stone": 120}},
+	"stairs":      {"name": "Лестница",       "cat": "Лестница",      "cost": {"wood": 90},  "grid": 3.0, "snap": "level",  "up": {"stone": 130}},
+	"ramp":        {"name": "Пандус",         "cat": "Лестница",      "cost": {"wood": 80},  "grid": 3.0, "snap": "ground", "up": {"stone": 120}},
+	"door":        {"name": "Дверь",          "cat": "Интерьер",      "cost": {"wood": 100}, "grid": 1.0, "snap": "free",   "up": {"metal": 40}},
+	"window_bars": {"name": "Решётка",        "cat": "Интерьер",      "cost": {"wood": 40},  "grid": 1.0, "snap": "free",   "up": {"metal": 20}},
+	"box":         {"name": "Ящик",           "cat": "Интерьер",      "cost": {"wood": 120}, "grid": 1.0, "snap": "free",   "up": {}},
+	"locker":      {"name": "Шкаф",           "cat": "Интерьер",      "cost": {"wood": 150}, "grid": 1.0, "snap": "free",   "up": {}},
+	"campfire":    {"name": "Костёр",         "cat": "Интерьер",      "cost": {"wood": 100}, "grid": 1.0, "snap": "free",   "up": {}},
+	"furnace":     {"name": "Печь",           "cat": "Интерьер",      "cost": {"stone": 200, "wood": 50}, "grid": 1.0, "snap": "free", "up": {}},
+	"workbench":   {"name": "Верстак",        "cat": "Интерьер",      "cost": {"wood": 200, "stone": 100}, "grid": 1.0, "snap": "free", "up": {}},
+	"bag":         {"name": "Спальник",       "cat": "Интерьер",      "cost": {"cloth": 25}, "grid": 1.0, "snap": "free",   "up": {}},
+}
+
+const BUILD_CATS := ["Интерьер", "Фундамент", "Стены и пол", "Лестница"]
+
+# поставленные постройки: [{kind, pos, rot, tier, node}]
+var structures: Array = []
+var build_selected := "foundation"
+
+
+func build_cost(kind: String) -> Dictionary:
+	return BUILD_CATALOG.get(kind, {}).get("cost", {})
+
+
+func can_afford_build(kind: String) -> bool:
+	var c: Dictionary = build_cost(kind)
+	for r in c:
+		if count(String(r)) < int(c[r]):
+			return false
+	return not c.is_empty()
+
+
+func pay_build(kind: String) -> bool:
+	if not can_afford_build(kind):
+		return false
+	var c: Dictionary = build_cost(kind)
+	for r in c:
+		remove_item(String(r), int(c[r]))
+	return true
+
+
+func refund_build(kind: String, tier: int = 0) -> void:
+	# при разборе возвращаем половину вложенного
+	var c: Dictionary = build_cost(kind)
+	for r in c:
+		add_item(String(r), maxi(1, int(int(c[r]) / 2.0)))
+	if tier > 0:
+		var u: Dictionary = BUILD_CATALOG.get(kind, {}).get("up", {})
+		for r in u:
+			add_item(String(r), maxi(1, int(int(u[r]) / 2.0)))
+
+
+func upgrade_cost(kind: String) -> Dictionary:
+	return BUILD_CATALOG.get(kind, {}).get("up", {})
+
+
+func can_upgrade(kind: String) -> bool:
+	var u: Dictionary = upgrade_cost(kind)
+	if u.is_empty():
+		return false
+	for r in u:
+		if count(String(r)) < int(u[r]):
+			return false
+	return true
+
+
+func builds_in_cat(cat: String) -> Array:
+	var out: Array = []
+	for k in BUILD_CATALOG:
+		if String(BUILD_CATALOG[k]["cat"]) == cat:
+			out.append(String(k))
+	out.sort()
+	return out
+
+
 # --- сохранение инвентаря ---
 
 func save_inventory() -> void:
@@ -554,6 +648,7 @@ func save_inventory() -> void:
 	cfg.set_value("inv", "items", items)
 	cfg.set_value("inv", "equipped", equipped)
 	cfg.set_value("inv", "hotbar", hotbar)
+	cfg.set_value("map", "markers", map_markers)
 	cfg.save(path)
 
 
@@ -574,6 +669,9 @@ func load_inventory() -> bool:
 	water = int(cfg.get_value("res", "water", water))
 	items = cfg.get_value("inv", "items", {})
 	equipped = cfg.get_value("inv", "equipped", {})
+	var mk: Variant = cfg.get_value("map", "markers", [])
+	if mk is Array:
+		map_markers = mk
 	var hb = cfg.get_value("inv", "hotbar", hotbar)
 	if hb is Array and hb.size() == 6:
 		hotbar = hb

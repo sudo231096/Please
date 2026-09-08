@@ -142,10 +142,12 @@ func _input(event: InputEvent) -> void:
 		if event.keycode >= KEY_1 and event.keycode <= KEY_6:
 			GameState.selected_slot = event.keycode - KEY_1
 		elif event.keycode == KEY_TAB:
+			GameState.last_yaw = rotation.y
 			GameState.last_pos = global_position
 			GameState.return_to_pos = true
 			get_tree().change_scene_to_file("res://scenes/Inventory.tscn")
 		elif event.keycode == KEY_M:
+			GameState.last_yaw = rotation.y
 			GameState.last_pos = global_position
 			GameState.return_to_pos = true
 			get_tree().change_scene_to_file("res://scenes/Map.tscn")
@@ -269,10 +271,13 @@ func _physics_process(delta: float) -> void:
 			var fwd := -_cam.global_transform.basis.z
 			fwd.y = 0.0
 			fwd = fwd.normalized()
-			terrain._place_building(GameState.build_kind, global_position, fwd, GameState.build_rot)
-			GameState.build_mode = false
+			var placed: bool = terrain._place_building(GameState.build_kind, global_position, fwd, GameState.build_rot)
+			# режим строительства НЕ выключаем — можно ставить подряд (как в Rust)
 			if _hud_ref:
-				_hud_ref.refresh()
+				if placed:
+					_hud_ref.refresh()
+				elif _hud_ref.has_method("toast"):
+					_hud_ref.toast("Здесь нельзя поставить")
 		# призрак обновляется в main
 	else:
 		# удар: на десктопе — ЛКМ или J; на телефоне — только кнопка «УДАР» (тап по экрану НЕ атакует)

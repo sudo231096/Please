@@ -402,7 +402,7 @@ func _build_bottom() -> void:
 # ================= адаптивная раскладка =================
 
 func _relayout() -> void:
-	if _root == null:
+	if _root == null or not is_inside_tree() or not is_instance_valid(_root):
 		return
 	var vs := get_viewport().get_visible_rect().size
 	var m := clampf(vs.x * 0.015, 8.0, 26.0)    # отступ от краёв зависит от ширины
