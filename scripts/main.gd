@@ -923,7 +923,7 @@ func _build_trees() -> void:
 			else:
 				s = _rng.randf_range(2.2, 3.2) if big else _rng.randf_range(0.8, 1.6)
 			var t := Transform3D(Basis(Vector3.UP, _rng.randf() * TAU), pos)
-			t = t.scaled(Vector3(s, s, s))
+			t = t.scaled_local(Vector3(s, s, s))
 			mm.set_instance_transform(i, t)
 			_tree_spots.append({"pos": pos, "index": i, "alive": true, "big": big, "mm": mm})
 		# кора и листва — раздельные материалы со скачанными PBR-текстурами
@@ -987,7 +987,7 @@ func _build_downloaded_trees(path: String, count: int, hmin: float, hmax: float,
 		var s: float = want_h / src_h
 		# основание чуть утоплено, чтобы дерево не парило на неровностях
 		var t := Transform3D(Basis(Vector3.UP, _rng.randf() * TAU), pos - Vector3(0, 0.15, 0))
-		t = t.scaled(Vector3(s, s, s))
+		t = t.scaled_local(Vector3(s, s, s))
 		mm.set_instance_transform(i, t)
 		_tree_spots.append({"pos": pos, "index": i, "alive": true, "big": want_h > (hmin + hmax) * 0.5, "mm": mm})
 		# коллизия ствола: игрок не проходит сквозь дерево
@@ -1028,7 +1028,7 @@ func _build_rocks() -> void:
 		var pos := _grid_spot(24.0, 9.0)
 		var s := _rng.randf_range(0.6, 2.2)
 		var t := Transform3D(Basis(Vector3.UP, _rng.randf() * TAU), pos + Vector3(0, 0.15 * s, 0))
-		t = t.scaled(Vector3(s, s * _rng.randf_range(0.6, 1.0), s))
+		t = t.scaled_local(Vector3(s, s * _rng.randf_range(0.6, 1.0), s))
 		mm.set_instance_transform(i, t)
 		_rock_spots.append({"pos": pos, "index": i, "alive": true})
 	var inst := MultiMeshInstance3D.new()
@@ -1086,7 +1086,7 @@ func _build_grass() -> void:
 		# трава «врастает» в землю и не может парить даже на неровностях
 		var sink := 0.12 * s
 		var t := Transform3D(Basis(Vector3.UP, _rng.randf() * TAU), Vector3(p.x, p.y - sink, p.z))
-		t = t.scaled(Vector3(s, s, s))
+		t = t.scaled_local(Vector3(s, s, s))
 		mm.set_instance_transform(i, t)
 	var inst := MultiMeshInstance3D.new()
 	inst.multimesh = mm
@@ -1739,6 +1739,12 @@ func _make_building(kind: String, parent: Node3D, ghost: bool, tier: int = 0) ->
 		"bag":
 			_box_at(Vector3(0, 0.1, 0), Vector3(0.9, 0.2, 2.0), C.call(Color(0.25, 0.4, 0.28)), parent)
 			_box_at(Vector3(0, 0.3, -0.9), Vector3(0.9, 0.25, 0.4), C.call(Color(0.18, 0.3, 0.22)), parent)
+		"sapling_pine", "sapling_birch", "sapling_maple":
+			# превью дерева: ствол + крона (реальная модель ставится при посадке)
+			_box_at(Vector3(0, 1.4, 0), Vector3(0.3, 2.8, 0.3), C.call(Color(0.35, 0.25, 0.14)), parent)
+			_sphere_at(Vector3(0, 3.4, 0), 1.3, 2.6, C.call(Color(0.2, 0.42, 0.18)), parent)
+		"sapling_rock":
+			_sphere_at(Vector3(0, 0.45, 0), 0.7, 0.9, C.call(Color(0.42, 0.42, 0.45)), parent)
 		_:
 			_box_at(Vector3(0, 0.5, 0), Vector3(1.0, 1.0, 1.0), mat_col, parent)
 
@@ -1829,6 +1835,11 @@ func _place_building(kind: String, origin: Vector3, look_dir: Vector3, rot: floa
 		return false
 	if not GameState.pay_build(kind):
 		return false
+	# саженцы и камни — отдельная система посадки (точно на поверхность)
+	if kind.begins_with("sapling_"):
+		_plant_object(kind, pos, rot)
+		GameState.save_inventory()
+		return true
 	var node := Node3D.new()
 	node.position = pos
 	node.rotation.y = rot
@@ -1840,6 +1851,80 @@ func _place_building(kind: String, origin: Vector3, look_dir: Vector3, rot: floa
 	GameState.structures.append({"kind": kind, "pos": pos, "rot": rot, "tier": 0, "node": node})
 	GameState.save_inventory()
 	return true
+
+
+## Посадка дерева/камня игроком: объект ставится ТОЧНО на поверхность,
+## получает коллизию и попадает в список добываемых (его можно срубить).
+func _plant_object(kind: String, pos: Vector3, rot: float) -> void:
+	# высота берётся из той же функции, что и для всего мира
+	var ground := _surface_height(pos.x, pos.z)
+	var node := Node3D.new()
+	node.position = Vector3(pos.x, ground, pos.z)
+	node.rotation.y = rot
+	add_child(node)
+
+	if kind == "sapling_rock":
+		var rm := MeshInstance3D.new()
+		rm.mesh = _make_rock_mesh()
+		rm.material_override = _terrain_material()
+		var rs := _rng.randf_range(0.9, 1.5)
+		rm.scale = Vector3(rs, rs * 0.8, rs)
+		rm.position = Vector3(0, 0.15 * rs, 0)
+		rm.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		node.add_child(rm)
+		_set_lod(node, 220.0)
+		_rock_spots.append({"pos": node.position, "index": -1, "alive": true, "node": node})
+		return
+
+	# дерево: своя модель на вид
+	var height := 0.0
+	match kind:
+		"sapling_birch":
+			height = _spawn_model_tree(node, "res://models/tree_birch.glb", 7.5, 10.5)
+		"sapling_maple":
+			height = _spawn_model_tree(node, "res://models/tree_maple.glb", 8.0, 12.0)
+		_:
+			var mi := MeshInstance3D.new()
+			mi.mesh = _make_tree_mesh(0)
+			var ts := _rng.randf_range(1.6, 2.6)
+			mi.scale = Vector3(ts, ts, ts)
+			mi.position = Vector3(0, -0.1, 0)
+			mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+			var am: ArrayMesh = mi.mesh
+			am.surface_set_material(0, _bark_material())
+			if am.get_surface_count() > 1:
+				am.surface_set_material(1, _foliage_material())
+			node.add_child(mi)
+			height = 3.0 * ts
+	_set_lod(node, 220.0)
+	_add_trunk_collision(node.position, maxf(3.0, height))
+	# посаженное дерево можно срубить, как обычное
+	_tree_spots.append({"pos": node.position, "index": -1, "alive": true, "big": false, "node": node})
+
+
+func _spawn_model_tree(parent: Node3D, path: String, hmin: float, hmax: float) -> float:
+	if not ResourceLoader.exists(path):
+		return 0.0
+	var scene: PackedScene = load(path)
+	var inst: Node3D = scene.instantiate()
+	var src: MeshInstance3D = null
+	for mi in inst.find_children("*", "MeshInstance3D", true, false):
+		src = mi
+		break
+	if src == null:
+		inst.queue_free()
+		return 0.0
+	var src_h: float = maxf(src.mesh.get_aabb().size.y, 0.001)
+	var want := _rng.randf_range(hmin, hmax)
+	var sc: float = want / src_h
+	var vis := MeshInstance3D.new()
+	vis.mesh = src.mesh
+	vis.scale = Vector3(sc, sc, sc)
+	vis.position = Vector3(0, -0.15, 0)
+	vis.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	parent.add_child(vis)
+	inst.queue_free()
+	return want
 
 
 func _add_build_collision(node: Node3D, kind: String) -> void:

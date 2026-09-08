@@ -566,9 +566,13 @@ const BUILD_CATALOG := {
 	"furnace":     {"name": "Печь",           "cat": "Интерьер",      "cost": {"stone": 200, "wood": 50}, "grid": 1.0, "snap": "free", "up": {}},
 	"workbench":   {"name": "Верстак",        "cat": "Интерьер",      "cost": {"wood": 200, "stone": 100}, "grid": 1.0, "snap": "free", "up": {}},
 	"bag":         {"name": "Спальник",       "cat": "Интерьер",      "cost": {"cloth": 25}, "grid": 1.0, "snap": "free",   "up": {}},
+	"sapling_pine":  {"name": "Саженец ели",   "cat": "Природа", "cost": {"wood": 30}, "grid": 1.0, "snap": "ground", "up": {}},
+	"sapling_birch": {"name": "Саженец берёзы","cat": "Природа", "cost": {"wood": 30}, "grid": 1.0, "snap": "ground", "up": {}},
+	"sapling_maple": {"name": "Саженец клёна", "cat": "Природа", "cost": {"wood": 30}, "grid": 1.0, "snap": "ground", "up": {}},
+	"sapling_rock":  {"name": "Камень",        "cat": "Природа", "cost": {"stone": 40}, "grid": 1.0, "snap": "ground", "up": {}},
 }
 
-const BUILD_CATS := ["Интерьер", "Фундамент", "Стены и пол", "Лестница"]
+const BUILD_CATS := ["Интерьер", "Фундамент", "Стены и пол", "Лестница", "Природа"]
 
 # поставленные постройки: [{kind, pos, rot, tier, node}]
 var structures: Array = []
