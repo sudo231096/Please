@@ -560,14 +560,14 @@ func drop_item(id: String, n: int) -> bool:
 # ================= СТРОИТЕЛЬСТВО =================
 ## Каталог строительных элементов: категория, стоимость, размер сетки, уровни улучшения.
 const BUILD_CATALOG := {
-	"foundation":  {"name": "Фундамент",      "cat": "Фундамент",     "cost": {"wood": 100}, "grid": 3.0, "snap": "ground", "up": {"stone": 150}},
-	"foundation_tri": {"name": "Фундамент угловой", "cat": "Фундамент", "cost": {"wood": 70}, "grid": 3.0, "snap": "ground", "up": {"stone": 100}},
-	"wall":        {"name": "Стена",          "cat": "Стены и пол",   "cost": {"wood": 50},  "grid": 3.0, "snap": "edge",   "up": {"stone": 80}},
-	"wall_window": {"name": "Стена с окном",  "cat": "Стены и пол",   "cost": {"wood": 60},  "grid": 3.0, "snap": "edge",   "up": {"stone": 90}},
-	"wall_door":   {"name": "Дверной проём",  "cat": "Стены и пол",   "cost": {"wood": 60},  "grid": 3.0, "snap": "edge",   "up": {"stone": 90}},
-	"floor":       {"name": "Потолок / пол",  "cat": "Стены и пол",   "cost": {"wood": 80},  "grid": 3.0, "snap": "level",  "up": {"stone": 120}},
-	"stairs":      {"name": "Лестница",       "cat": "Лестница",      "cost": {"wood": 90},  "grid": 3.0, "snap": "level",  "up": {"stone": 130}},
-	"ramp":        {"name": "Пандус",         "cat": "Лестница",      "cost": {"wood": 80},  "grid": 3.0, "snap": "ground", "up": {"stone": 120}},
+	"foundation":  {"name": "Фундамент",      "cat": "Фундамент",     "cost": {"wood": 300}, "grid": 9.0, "snap": "ground", "up": {"stone": 450}},
+	"foundation_tri": {"name": "Фундамент угловой", "cat": "Фундамент", "cost": {"wood": 210}, "grid": 9.0, "snap": "ground", "up": {"stone": 300}},
+	"wall":        {"name": "Стена",          "cat": "Стены и пол",   "cost": {"wood": 50},  "grid": 9.0, "snap": "edge",   "up": {"stone": 80}},
+	"wall_window": {"name": "Стена с окном",  "cat": "Стены и пол",   "cost": {"wood": 60},  "grid": 9.0, "snap": "edge",   "up": {"stone": 90}},
+	"wall_door":   {"name": "Дверной проём",  "cat": "Стены и пол",   "cost": {"wood": 60},  "grid": 9.0, "snap": "edge",   "up": {"stone": 90}},
+	"floor":       {"name": "Потолок / пол",  "cat": "Стены и пол",   "cost": {"wood": 240}, "grid": 9.0, "snap": "level",  "up": {"stone": 360}},
+	"stairs":      {"name": "Лестница",       "cat": "Лестница",      "cost": {"wood": 90},  "grid": 9.0, "snap": "level",  "up": {"stone": 130}},
+	"ramp":        {"name": "Пандус",         "cat": "Лестница",      "cost": {"wood": 80},  "grid": 9.0, "snap": "ground", "up": {"stone": 120}},
 	"door":        {"name": "Дверь",          "cat": "Интерьер",      "cost": {"wood": 100}, "grid": 1.0, "snap": "free",   "up": {"metal": 40}},
 	"window_bars": {"name": "Решётка",        "cat": "Интерьер",      "cost": {"wood": 40},  "grid": 1.0, "snap": "free",   "up": {"metal": 20}},
 	"box":         {"name": "Ящик",           "cat": "Интерьер",      "cost": {"wood": 120}, "grid": 1.0, "snap": "free",   "up": {}},

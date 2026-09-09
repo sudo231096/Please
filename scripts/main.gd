@@ -1819,37 +1819,41 @@ func _make_building(kind: String, parent: Node3D, ghost: bool, tier: int = 0) ->
 
 	match kind:
 		"foundation":
-			_box_at(Vector3(0, -0.15, 0), Vector3(3.0, 0.3, 3.0), C.call(wood_c), parent)
-			for sx in [-1.35, 1.35]:
-				for sz in [-1.35, 1.35]:
-					_box_at(Vector3(sx, -0.75, sz), Vector3(0.25, 1.2, 0.25), C.call(wood_d), parent)
+			# плита 9x9 м (в 3 раза больше прежней)
+			_box_at(Vector3(0, -0.25, 0), Vector3(9.0, 0.5, 9.0), C.call(wood_c), parent)
+			# доски настила для вида
+			for i in range(5):
+				_box_at(Vector3(-3.6 + i * 1.8, 0.02, 0), Vector3(1.6, 0.06, 8.8), C.call(wood_c.lightened(0.05)), parent)
+			for sx in [-4.1, 4.1]:
+				for sz in [-4.1, 4.1]:
+					_box_at(Vector3(sx, -1.4, sz), Vector3(0.6, 2.4, 0.6), C.call(wood_d), parent)
 		"foundation_tri":
-			_box_at(Vector3(0.5, -0.15, 0), Vector3(2.0, 0.3, 3.0), C.call(wood_c), parent)
-			_box_at(Vector3(-0.8, -0.15, 0.7), Vector3(1.2, 0.3, 1.4), C.call(wood_c), parent)
-			_box_at(Vector3(1.2, -0.75, 1.2), Vector3(0.25, 1.2, 0.25), C.call(wood_d), parent)
-			_box_at(Vector3(1.2, -0.75, -1.2), Vector3(0.25, 1.2, 0.25), C.call(wood_d), parent)
+			_box_at(Vector3(1.5, -0.25, 0), Vector3(6.0, 0.5, 9.0), C.call(wood_c), parent)
+			_box_at(Vector3(-2.4, -0.25, 2.1), Vector3(3.6, 0.5, 4.2), C.call(wood_c), parent)
+			_box_at(Vector3(3.6, -1.4, 3.6), Vector3(0.6, 2.4, 0.6), C.call(wood_d), parent)
+			_box_at(Vector3(3.6, -1.4, -3.6), Vector3(0.6, 2.4, 0.6), C.call(wood_d), parent)
 		"wall":
-			_box_at(Vector3(0, 1.5, 0), Vector3(3.0, 3.0, 0.2), C.call(wood_c), parent)
-			_box_at(Vector3(0, 0.1, 0), Vector3(3.0, 0.2, 0.26), C.call(wood_d), parent)
-			_box_at(Vector3(0, 2.9, 0), Vector3(3.0, 0.2, 0.26), C.call(wood_d), parent)
+			_box_at(Vector3(0, 2.0, 0), Vector3(9.0, 4.0, 0.35), C.call(wood_c), parent)
+			_box_at(Vector3(0, 0.15, 0), Vector3(9.0, 0.3, 0.45), C.call(wood_d), parent)
+			_box_at(Vector3(0, 3.85, 0), Vector3(9.0, 0.3, 0.45), C.call(wood_d), parent)
 		"wall_window":
-			_box_at(Vector3(0, 0.55, 0), Vector3(3.0, 1.1, 0.2), C.call(wood_c), parent)
-			_box_at(Vector3(0, 2.6, 0), Vector3(3.0, 0.8, 0.2), C.call(wood_c), parent)
-			_box_at(Vector3(-1.3, 1.6, 0), Vector3(0.4, 1.0, 0.2), C.call(wood_c), parent)
-			_box_at(Vector3(1.3, 1.6, 0), Vector3(0.4, 1.0, 0.2), C.call(wood_c), parent)
+			_box_at(Vector3(0, 0.8, 0), Vector3(9.0, 1.6, 0.35), C.call(wood_c), parent)
+			_box_at(Vector3(0, 3.5, 0), Vector3(9.0, 1.0, 0.35), C.call(wood_c), parent)
+			_box_at(Vector3(-3.6, 2.2, 0), Vector3(1.8, 1.4, 0.35), C.call(wood_c), parent)
+			_box_at(Vector3(3.6, 2.2, 0), Vector3(1.8, 1.4, 0.35), C.call(wood_c), parent)
 		"wall_door":
-			_box_at(Vector3(-1.1, 1.5, 0), Vector3(0.8, 3.0, 0.2), C.call(wood_c), parent)
-			_box_at(Vector3(1.1, 1.5, 0), Vector3(0.8, 3.0, 0.2), C.call(wood_c), parent)
-			_box_at(Vector3(0, 2.7, 0), Vector3(1.4, 0.6, 0.2), C.call(wood_c), parent)
+			_box_at(Vector3(-3.3, 2.0, 0), Vector3(2.4, 4.0, 0.35), C.call(wood_c), parent)
+			_box_at(Vector3(3.3, 2.0, 0), Vector3(2.4, 4.0, 0.35), C.call(wood_c), parent)
+			_box_at(Vector3(0, 3.55, 0), Vector3(4.2, 0.9, 0.35), C.call(wood_c), parent)
 		"floor":
-			_box_at(Vector3(0, 3.0, 0), Vector3(3.0, 0.2, 3.0), C.call(wood_c), parent)
+			_box_at(Vector3(0, 4.0, 0), Vector3(9.0, 0.35, 9.0), C.call(wood_c), parent)
 		"stairs":
-			for i in range(6):
+			for i in range(8):
 				var h: float = 0.5 + i * 0.5
-				_box_at(Vector3(0, h * 0.5, -1.25 + i * 0.5), Vector3(2.6, h, 0.5), C.call(wood_c if i % 2 == 0 else wood_d), parent)
+				_box_at(Vector3(0, h * 0.5, -3.5 + i * 1.0), Vector3(4.0, h, 1.0), C.call(wood_c if i % 2 == 0 else wood_d), parent)
 		"ramp":
-			var r := _box_at(Vector3(0, 0.75, 0), Vector3(3.0, 0.2, 4.2), C.call(wood_c), parent)
-			r.rotation.x = -0.35
+			var r := _box_at(Vector3(0, 1.9, 0), Vector3(6.0, 0.35, 9.0), C.call(wood_c), parent)
+			r.rotation.x = -0.42
 		"door":
 			_box_at(Vector3(0, 1.1, 0), Vector3(1.3, 2.2, 0.14), C.call(Color(0.5, 0.36, 0.2) if tier == 0 else Color(0.5, 0.5, 0.53)), parent)
 			_sphere_at(Vector3(0.5, 1.1, 0.1), 0.08, 0.16, C.call(Color(0.8, 0.7, 0.3)), parent)
@@ -1904,14 +1908,37 @@ func can_place_at(kind: String, pos: Vector3) -> bool:
 			absf(_surface_height(pos.x, pos.z + e) - pos.y))
 		if dy > 1.6:
 			return false
+	# 2.5) стены, полы и лестницы — только на фундаменте (снап "edge"/"level")
+	var snap_mode: String = String(info.get("snap", "free"))
+	if snap_mode == "edge" or snap_mode == "level":
+		var has_base := false
+		for st in GameState.structures:
+			var sk: String = String(st["kind"])
+			if not (sk.begins_with("foundation") or sk == "floor"):
+				continue
+			var sp: Vector3 = st["pos"]
+			# точка должна лежать в пределах плиты (9x9) или на её краю
+			if absf(sp.x - pos.x) <= grid * 0.5 + 0.6 and absf(sp.z - pos.z) <= grid * 0.5 + 0.6 \
+					and absf(sp.y - pos.y) < 5.0:
+				has_base = true
+				break
+		if not has_base:
+			return false
+
 	# 3) пересечение с уже поставленной постройкой
-	var min_d: float = grid * 0.75
 	for st in GameState.structures:
 		var sp: Vector3 = st["pos"]
-		if String(st["kind"]) == kind and sp.distance_to(pos) < 0.35:
+		var sk2: String = String(st["kind"])
+		# в одну точку и того же типа — нельзя (стена поверх стены)
+		if sp.distance_to(pos) < 0.4 and sk2 == kind:
 			return false
-		if absf(sp.y - pos.y) < 1.2 and Vector2(sp.x - pos.x, sp.z - pos.z).length() < min_d:
+		# фундамент и стена могут делить край плиты, но не центр
+		if sp.distance_to(pos) < 0.4 and sk2.begins_with("foundation") and not kind.begins_with("foundation"):
 			return false
+		# фундаменты не должны накладываться друг на друга
+		if kind.begins_with("foundation") and sk2.begins_with("foundation"):
+			if absf(sp.x - pos.x) < grid - 0.5 and absf(sp.z - pos.z) < grid - 0.5:
+				return false
 	# 4) не ставить внутрь деревьев и камней
 	for t in _tree_spots:
 		if bool(t["alive"]) and (t["pos"] as Vector3).distance_to(pos) < 1.6:
@@ -1934,8 +1961,8 @@ func snap_position(kind: String, want: Vector3) -> Vector3:
 		py = _surface_height(px, pz)
 		return Vector3(px, py, pz)
 
-	# ищем ближайший фундамент/пол для привязки по высоте (этажи)
-	var best_d := 4.2
+	# ищем ближайший фундамент/пол для привязки (радиус зависит от размера плиты)
+	var best_d: float = grid * 1.1
 	var snapped := false
 	for st in GameState.structures:
 		var sk: String = String(st["kind"])
@@ -1946,10 +1973,12 @@ func snap_position(kind: String, want: Vector3) -> Vector3:
 		if d < best_d:
 			best_d = d
 			if mode == "edge":
-				# стены встают на край плиты
-				var dx: float = px - sp.x
-				var dz: float = pz - sp.z
-				if absf(dx) > absf(dz):
+				# стены встают на край плиты — выбираем ближайшую сторону
+				var dx: float = want.x - sp.x
+				var dz: float = want.z - sp.z
+				if absf(dx) < 0.01 and absf(dz) < 0.01:
+					dx = 1.0      # игрок целится в центр — берём сторону по умолчанию
+				if absf(dx) >= absf(dz):
 					px = sp.x + signf(dx) * grid * 0.5
 					pz = sp.z
 				else:
@@ -2069,34 +2098,55 @@ func _spawn_model_tree(parent: Node3D, path: String, hmin: float, hmax: float) -
 
 
 func _add_build_collision(node: Node3D, kind: String) -> void:
+	# у КАЖДОЙ постройки своя коллизия — сквозь них нельзя пройти
 	var body := StaticBody3D.new()
 	body.collision_layer = 1
 	body.collision_mask = 0
-	var cs := CollisionShape3D.new()
-	var box := BoxShape3D.new()
+	var shapes: Array = []      # [[size, position], ...]
 	match kind:
-		"foundation", "foundation_tri":
-			box.size = Vector3(3.0, 0.35, 3.0)
-			cs.position = Vector3(0, -0.15, 0)
-		"wall", "wall_window", "wall_door":
-			box.size = Vector3(3.0, 3.0, 0.25)
-			cs.position = Vector3(0, 1.5, 0)
+		"foundation":
+			shapes = [[Vector3(9.0, 0.6, 9.0), Vector3(0, -0.2, 0)]]
+		"foundation_tri":
+			shapes = [[Vector3(6.0, 0.6, 9.0), Vector3(1.5, -0.2, 0)],
+				[Vector3(3.6, 0.6, 4.2), Vector3(-2.4, -0.2, 2.1)]]
+		"wall", "wall_window":
+			shapes = [[Vector3(9.0, 4.0, 0.45), Vector3(0, 2.0, 0)]]
+		"wall_door":
+			# проём посередине остаётся проходимым
+			shapes = [[Vector3(2.4, 4.0, 0.45), Vector3(-3.3, 2.0, 0)],
+				[Vector3(2.4, 4.0, 0.45), Vector3(3.3, 2.0, 0)],
+				[Vector3(4.2, 0.9, 0.45), Vector3(0, 3.55, 0)]]
 		"floor":
-			box.size = Vector3(3.0, 0.25, 3.0)
-			cs.position = Vector3(0, 3.0, 0)
-		"stairs", "ramp":
-			box.size = Vector3(2.8, 1.6, 3.2)
-			cs.position = Vector3(0, 0.8, 0)
+			shapes = [[Vector3(9.0, 0.45, 9.0), Vector3(0, 4.0, 0)]]
+		"stairs":
+			shapes = [[Vector3(4.0, 4.2, 8.4), Vector3(0, 2.1, 0)]]
+		"ramp":
+			shapes = [[Vector3(6.0, 0.6, 9.0), Vector3(0, 1.9, 0)]]
+		"door":
+			shapes = [[Vector3(1.4, 2.2, 0.25), Vector3(0, 1.1, 0)]]
+		"window_bars":
+			shapes = [[Vector3(1.4, 1.1, 0.2), Vector3(0, 1.6, 0)]]
 		"locker":
-			box.size = Vector3(0.9, 1.8, 0.5)
-			cs.position = Vector3(0, 0.9, 0)
-		"box", "furnace", "workbench":
-			box.size = Vector3(1.2, 1.0, 1.0)
-			cs.position = Vector3(0, 0.5, 0)
+			shapes = [[Vector3(0.9, 1.8, 0.55), Vector3(0, 0.9, 0)]]
+		"box":
+			shapes = [[Vector3(1.2, 0.9, 0.9), Vector3(0, 0.45, 0)]]
+		"furnace":
+			shapes = [[Vector3(1.1, 1.3, 1.1), Vector3(0, 0.65, 0)]]
+		"workbench":
+			shapes = [[Vector3(1.7, 1.0, 1.0), Vector3(0, 0.5, 0)]]
+		"campfire":
+			shapes = [[Vector3(1.2, 0.5, 1.2), Vector3(0, 0.25, 0)]]
+		"bag":
+			shapes = [[Vector3(1.0, 0.35, 2.1), Vector3(0, 0.18, 0)]]
 		_:
 			return
-	cs.shape = box
-	body.add_child(cs)
+	for sp in shapes:
+		var cs := CollisionShape3D.new()
+		var box := BoxShape3D.new()
+		box.size = sp[0]
+		cs.shape = box
+		cs.position = sp[1]
+		body.add_child(cs)
 	node.add_child(body)
 
 

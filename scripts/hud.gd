@@ -292,8 +292,14 @@ func _build_build_panel(root: Control) -> void:
 	_build_cats_row.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	top.add_child(_build_cats_row)
 
-	var rot := Kit.button("↻", 18, false, Vector2(54, 44))
-	rot.pressed.connect(func() -> void: GameState.build_rot += PI / 2.0)
+	var rot := Kit.button("↻ 0°", 15, false, Vector2(76, 44))
+	rot.pressed.connect(func() -> void:
+		GameState.build_rot += PI / 4.0
+		var deg: int = int(round(rad_to_deg(GameState.build_rot))) % 360
+		if deg < 0:
+			deg += 360
+		rot.text = "↻ %d°" % deg
+	)
 	top.add_child(rot)
 
 	var up := Kit.button("УЛУЧШИТЬ", 13, false, Vector2(104, 44))

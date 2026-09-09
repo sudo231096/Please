@@ -40,6 +40,14 @@ func _ready() -> void:
 	add_to_group("local_player")
 	collision_layer = 2
 	collision_mask = 1
+	# форма столкновения игрока — без неё он проходил сквозь постройки
+	var _cs := CollisionShape3D.new()
+	var _cap := CapsuleShape3D.new()
+	_cap.radius = 0.35
+	_cap.height = 1.7
+	_cs.shape = _cap
+	_cs.position = Vector3(0, 0.85, 0)
+	add_child(_cs)
 	_cam = Camera3D.new()
 	_cam.position = Vector3(0, EYE_HEIGHT, 0)
 	_cam.current = true
@@ -159,7 +167,7 @@ func _input(event: InputEvent) -> void:
 			GameState.return_to_pos = true
 			get_tree().change_scene_to_file("res://scenes/Map.tscn")
 		elif event.keycode == KEY_R and GameState.build_mode:
-			GameState.build_rot += PI / 2.0  # поворот постройки на 90°
+			GameState.build_rot += PI / 4.0  # поворот постройки на 45°
 		elif event.keycode == KEY_ESCAPE and GameState.build_mode:
 			GameState.build_mode = false
 		elif event.keycode == KEY_E:
@@ -168,9 +176,9 @@ func _input(event: InputEvent) -> void:
 		if GameState.build_mode:
 			# в режиме строительства колесо поворачивает постройку (как в Rust)
 			if event.button_index == MOUSE_BUTTON_WHEEL_UP:
-				GameState.build_rot += PI / 2.0
+				GameState.build_rot += PI / 4.0
 			elif event.button_index == MOUSE_BUTTON_WHEEL_DOWN:
-				GameState.build_rot -= PI / 2.0
+				GameState.build_rot -= PI / 4.0
 			elif event.button_index == MOUSE_BUTTON_RIGHT:
 				GameState.build_mode = false  # отмена строительства
 		else:
@@ -240,17 +248,20 @@ func _physics_process(delta: float) -> void:
 	# скорость: при приседе медленнее; базовая — с учётом прокачки
 	var spd := CROUCH_SPEED if _crouching else SPEED
 
-	# горизонтальное движение
-	global_position.x += wish.x * spd * delta
-	global_position.z += wish.z * spd * delta
+	# горизонтальное движение — через физику, чтобы упираться в постройки
+	var before_xz := Vector2(global_position.x, global_position.z)
+	velocity.x = wish.x * spd
+	velocity.z = wish.z * spd
+	velocity.y = 0.0
+	move_and_slide()
 	global_position.x = clampf(global_position.x, -500.0, 500.0)
 	global_position.z = clampf(global_position.z, -500.0, 500.0)
 
 	# не пускаем в глубокую воду (берег — граница острова)
 	var water_h := _ground_height()
 	if water_h < -2.0:
-		global_position.x -= wish.x * spd * delta
-		global_position.z -= wish.z * spd * delta
+		global_position.x = before_xz.x
+		global_position.z = before_xz.y
 
 	# прыжок
 	var jump := Input.is_physical_key_pressed(KEY_SPACE)
