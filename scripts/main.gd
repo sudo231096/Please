@@ -14,13 +14,33 @@ const HALF := TERRAIN_SIZE * 0.5
 const ISLAND_R := 430.0
 const WATER_LEVEL := -1.0
 
-# горы: [x, z, высота, радиус] (внутри острова)
+# горные массивы: [x, z, высота, радиус, вытянутость, поворот] — не одинаковые конусы,
+# а вытянутые хребты с отрогами
 const MOUNTAINS := [
-	[180.0, 180.0, 15.0, 60.0],
-	[-240.0, -120.0, 18.0, 70.0],
-	[100.0, -280.0, 13.0, 55.0],
-	[-80.0, 260.0, 16.0, 65.0],
+	[210.0, 165.0, 34.0, 78.0, 2.1, 0.6],     # северо-восточный хребет
+	[-255.0, -140.0, 41.0, 92.0, 1.7, -0.4],  # главный массив
+	[95.0, -295.0, 26.0, 62.0, 1.4, 1.2],     # южные скалы
+	[-110.0, 275.0, 30.0, 70.0, 1.9, 2.3],    # западные горы
+	[-30.0, -60.0, 12.0, 44.0, 1.2, 0.9],     # центральная возвышенность
 ]
+
+# реки: ломаные линии от гор к морю [[точки...], ширина]
+const RIVERS := [
+	[[Vector2(-250.0, -130.0), Vector2(-190.0, -40.0), Vector2(-150.0, 60.0), Vector2(-170.0, 190.0), Vector2(-215.0, 330.0)], 15.0],
+	[[Vector2(205.0, 160.0), Vector2(150.0, 90.0), Vector2(120.0, -20.0), Vector2(160.0, -140.0), Vector2(230.0, -280.0)], 13.0],
+	[[Vector2(-25.0, -55.0), Vector2(40.0, -30.0), Vector2(120.0, 20.0), Vector2(240.0, 90.0), Vector2(360.0, 130.0)], 11.0],
+]
+
+# озёра: [x, z, радиус, глубина]
+const LAKES := [
+	[-120.0, 120.0, 52.0, 5.5],
+	[190.0, -60.0, 38.0, 4.5],
+	[-20.0, -230.0, 44.0, 5.0],
+	[280.0, 190.0, 30.0, 3.8],
+]
+
+# болотистая низина
+const SWAMP := [60.0, 250.0, 95.0]
 
 var _player: CharacterBody3D
 var _hud: CanvasLayer
@@ -247,35 +267,119 @@ func _on_land(x: float, z: float) -> bool:
 	return _surface_height(x, z) > WATER_LEVEL + 0.3
 
 
+## Расстояние от точки до ломаной реки (для русла и берегов)
+func _river_dist(x: float, z: float, pts: Array) -> float:
+	var best := 1e9
+	for i in range(pts.size() - 1):
+		var a: Vector2 = pts[i]
+		var b: Vector2 = pts[i + 1]
+		var ab := b - a
+		var t: float = clampf((Vector2(x, z) - a).dot(ab) / maxf(ab.length_squared(), 0.001), 0.0, 1.0)
+		best = minf(best, (Vector2(x, z) - (a + ab * t)).length())
+	return best
+
+
+## Насколько точка «в реке»: 1 в русле, 0 вдали
+func _river_factor(x: float, z: float) -> float:
+	var f := 0.0
+	for r in RIVERS:
+		var d := _river_dist(x, z, r[0])
+		var w: float = r[1]
+		f = maxf(f, clampf(1.0 - d / (w * 2.2), 0.0, 1.0))
+	return f
+
+
+## Фактор озера
+func _lake_factor(x: float, z: float) -> float:
+	var f := 0.0
+	for l in LAKES:
+		var d := Vector2(x - l[0], z - l[1]).length()
+		f = maxf(f, clampf(1.0 - d / float(l[2]), 0.0, 1.0))
+	return f
+
+
+## Фактор болота
+func _swamp_factor(x: float, z: float) -> float:
+	var d := Vector2(x - SWAMP[0], z - SWAMP[1]).length()
+	return clampf(1.0 - d / float(SWAMP[2]), 0.0, 1.0)
+
+
 func _ground_height(x: float, z: float) -> float:
 	var mask := _island_mask(x, z)
 	var h := 0.0
-	# многослойный шум — холмистая местность как в Rust
-	h += 4.0 * sin(x * 0.006 + 1.3) * cos(z * 0.007 + 0.7)
-	h += 2.2 * sin(x * 0.013 + 0.5) * sin(z * 0.011 + 2.1)
-	h += 1.0 * sin(x * 0.027 + 0.2) * cos(z * 0.023 + 1.6)
-	h += 0.5 * sin(x * 0.051 + 3.0) * sin(z * 0.047 + 0.9)
-	# мелкие бугры и неровности
-	h += 0.6 * sin(x * 0.09 + 1.1) * cos(z * 0.083 + 0.3)
-	h += 0.3 * sin(x * 0.17 + 0.7) * sin(z * 0.19 + 2.3)
+	# крупные формы рельефа — плавные волны разного масштаба
+	h += 5.5 * sin(x * 0.0052 + 1.3) * cos(z * 0.0061 + 0.7)
+	h += 3.4 * sin(x * 0.0113 + 0.5) * sin(z * 0.0097 + 2.1)
+	h += 1.8 * sin(x * 0.0231 + 0.2) * cos(z * 0.0207 + 1.6)
+	h += 0.9 * sin(x * 0.0447 + 3.0) * sin(z * 0.0419 + 0.9)
+	# средние холмы
+	h += 0.7 * sin(x * 0.083 + 1.1) * cos(z * 0.077 + 0.3)
+	h += 0.35 * sin(x * 0.161 + 0.7) * sin(z * 0.173 + 2.3)
+	# мелкая шероховатость (кочки, неровности)
+	h += 0.18 * sin(x * 0.31 + 2.2) * cos(z * 0.29 + 1.1)
+
+	# --- горные массивы: вытянутые, с отрогами и зубцами ---
 	for p in MOUNTAINS:
 		var dx: float = x - p[0]
 		var dz: float = z - p[1]
-		var d2: float = dx * dx + dz * dz
-		h += p[2] * exp(-d2 / (2.0 * p[3] * p[3]))
-	# лужи: плавные углубления на суше (небольшие озёра)
+		# поворот и вытягивание — получается хребет, а не конус
+		var ang: float = p[5]
+		var rx: float = dx * cos(ang) - dz * sin(ang)
+		var rz: float = dx * sin(ang) + dz * cos(ang)
+		rx /= float(p[4])
+		var d2: float = rx * rx + rz * rz
+		var r: float = p[3]
+		var peak: float = p[2] * exp(-d2 / (2.0 * r * r))
+		# отроги и скальные зубцы: шум усиливается ближе к вершине
+		var k: float = clampf(peak / maxf(p[2], 0.001), 0.0, 1.0)
+		peak += k * (3.4 * sin(rx * 0.075 + rz * 0.06) + 2.2 * cos(rz * 0.11 - rx * 0.04))
+		peak += k * k * 1.6 * sin(rx * 0.21 + 1.3) * cos(rz * 0.19)
+		h += maxf(peak, 0.0)
+
+	# --- овраги и ущелья между массивами ---
+	var ravine: float = sin(x * 0.0135 + 0.4) * cos(z * 0.0121 - 1.1)
+	if ravine > 0.72:
+		h -= (ravine - 0.72) * 16.0
+
+	# --- реки: врезаются в рельеф долиной ---
+	for rv in RIVERS:
+		var d := _river_dist(x, z, rv[0])
+		var w: float = rv[1]
+		if d < w * 3.0:
+			# широкая пологая долина
+			var valley: float = 1.0 - smoothstep(0.0, w * 3.0, d)
+			h -= valley * 4.2
+			# само русло
+			if d < w:
+				var bed: float = 1.0 - smoothstep(0.0, w, d)
+				h = lerpf(h, WATER_LEVEL - 1.6, bed * 0.92)
+
+	# --- озёра ---
+	for l in LAKES:
+		var dl := Vector2(x - l[0], z - l[1]).length()
+		var lr: float = l[2]
+		if dl < lr * 1.5:
+			var edge: float = 1.0 - smoothstep(lr * 0.55, lr * 1.5, dl)
+			h = lerpf(h, WATER_LEVEL - float(l[3]), edge * 0.95)
+
+	# --- болото: широкая мокрая низина ---
+	var sw := _swamp_factor(x, z)
+	if sw > 0.0:
+		h = lerpf(h, WATER_LEVEL + 0.25, sw * 0.75)
+		h += sin(x * 0.13) * cos(z * 0.11) * 0.35 * sw   # кочки
+
+	# лужи
 	for p in _puddles:
-		var dx: float = x - p["x"]
-		var dz: float = z - p["z"]
-		var d: float = sqrt(dx * dx + dz * dz)
-		var r: float = p["r"]
-		if d < r:
-			var k := 1.0 - d / r
-			h = lerpf(h, -1.4, k * 0.7)
-	# суша: поднимаем базовый рельеф и умножаем на маску острова
+		var pdx: float = x - p["x"]
+		var pdz: float = z - p["z"]
+		var pd: float = sqrt(pdx * pdx + pdz * pdz)
+		var pr: float = p["r"]
+		if pd < pr:
+			h = lerpf(h, -1.4, (1.0 - pd / pr) * 0.7)
+
+	# суша поднята над водой, за берегом — морское дно
 	var land := (h + 7.0) * mask
-	# море за берегом уходит на морское дно
-	var seafloor := (WATER_LEVEL - 6.0) * (1.0 - mask)
+	var seafloor := (WATER_LEVEL - 7.0) * (1.0 - mask)
 	return land + seafloor
 
 
@@ -305,6 +409,52 @@ func _surface_height(x: float, z: float) -> float:
 	else:
 		# треугольник B
 		return h11 + (1.0 - tx) * (h01 - h11) + (1.0 - tz) * (h10 - h11)
+
+
+
+# ================= БИОМЫ =================
+# 0 = лес, 1 = равнина, 2 = горы, 3 = пляж, 4 = болото, 5 = вода
+enum Biome { FOREST, PLAIN, MOUNTAIN, BEACH, SWAMP, WATER }
+
+
+## Биом в точке — определяется высотой, уклоном, близостью воды и шумом
+func biome_at(x: float, z: float) -> int:
+	var h := _surface_height(x, z)
+	if h < WATER_LEVEL:
+		return Biome.WATER
+	var mask := _island_mask(x, z)
+	if mask < 0.5 or h < WATER_LEVEL + 2.2:
+		return Biome.BEACH
+	if _swamp_factor(x, z) > 0.22:
+		return Biome.SWAMP
+	if h > 30.0:
+		return Biome.MOUNTAIN
+	var e := 2.0
+	var nx := _surface_height(x + e, z) - _surface_height(x - e, z)
+	var nz := _surface_height(x, z + e) - _surface_height(x, z - e)
+	if Vector2(nx, nz).length() / (2.0 * e) > 0.85:
+		return Biome.MOUNTAIN
+	# лес/равнина по плавному шуму — переходы получаются мягкими
+	var f := sin(x * 0.0089 + 1.7) * cos(z * 0.0077 - 0.6) + 0.45 * sin(x * 0.019 - 2.1) * cos(z * 0.017 + 0.8)
+	return Biome.FOREST if f > 0.05 else Biome.PLAIN
+
+
+## Плотность деревьев в биоме (0..1)
+func _tree_density(x: float, z: float) -> float:
+	match biome_at(x, z):
+		Biome.FOREST:
+			# внутри леса есть густые и редкие участки
+			var d := sin(x * 0.0135 + 0.9) * cos(z * 0.0122 - 1.4)
+			return 0.55 + 0.45 * clampf(d, -1.0, 1.0)
+		Biome.PLAIN:
+			return 0.14
+		Biome.SWAMP:
+			return 0.4
+		Biome.MOUNTAIN:
+			return 0.12
+		Biome.BEACH:
+			return 0.05
+	return 0.0
 
 
 func _build_puddles() -> void:
@@ -396,13 +546,26 @@ func _make_tree_mesh(species: int = 0) -> ArrayMesh:
 			_add_box(tv, tc, ti, Vector3(0.35, 1.7, 0.1), Vector3(0.7, 0.08, 0.08), brown.darkened(0.3))
 			_add_box(tv, tc, ti, Vector3(-0.32, 2.1, -0.1), Vector3(0.62, 0.07, 0.07), brown.darkened(0.3))
 			_add_box(tv, tc, ti, Vector3(0.15, 2.4, 0.25), Vector3(0.45, 0.06, 0.06), brown.darkened(0.3))
+		3:
+			# средняя ель: ствол чуть тоньше
+			_add_box(tv, tc, ti, Vector3(0, 0.5, 0), Vector3(0.14, 1.0, 0.14), brown)
+		4:
+			# молодое деревце: тонкий стволик
+			_add_box(tv, tc, ti, Vector3(0, 0.4, 0), Vector3(0.09, 0.8, 0.09), brown.lightened(0.1))
+		5:
+			# поваленное дерево: длинный лежачий ствол с обломанными ветвями
+			_add_box(tv, tc, ti, Vector3(0, 0.3, 0), Vector3(0.34, 0.34, 4.2), brown.darkened(0.15))
+			_add_box(tv, tc, ti, Vector3(0.4, 0.45, 1.1), Vector3(0.7, 0.11, 0.11), brown.darkened(0.25))
+			_add_box(tv, tc, ti, Vector3(-0.35, 0.5, -0.9), Vector3(0.6, 0.1, 0.1), brown.darkened(0.25))
+			# вывороченный корень
+			_add_box(tv, tc, ti, Vector3(0, 0.5, -2.2), Vector3(0.9, 0.9, 0.25), brown.darkened(0.3))
 		_:
 			# ель: тонкий ствол
 			_add_box(tv, tc, ti, Vector3(0, 0.55, 0), Vector3(0.16, 1.1, 0.16), brown)
 	am.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, _surface_arrays(tv, tc, ti, 2.0))
 
 	# --- surface 1: ЛИСТВА (текстура растительности) ---
-	if species != 2:
+	if species != 2 and species != 5:
 		var fv := PackedVector3Array()
 		var fc := PackedColorArray()
 		var fi := PackedInt32Array()
@@ -413,6 +576,13 @@ func _make_tree_mesh(species: int = 0) -> ArrayMesh:
 			_add_sphere_cluster(fv, fc, fi, Vector3(0.5, 1.85, 0.2), 0.62, green.darkened(0.06))
 			_add_sphere_cluster(fv, fc, fi, Vector3(-0.45, 1.9, -0.25), 0.6, green.darkened(0.04))
 			_add_sphere_cluster(fv, fc, fi, Vector3(0.1, 2.5, -0.3), 0.55, green.lightened(0.05))
+		elif species == 3:
+			# средняя ель: два яруса
+			_add_cone(fv, fc, fi, 0.8, 0.75, 1.2, green.darkened(0.04))
+			_add_cone(fv, fc, fi, 1.6, 0.5, 1.0, green.lightened(0.03))
+		elif species == 4:
+			# молодое деревце: маленькая шапка
+			_add_cone(fv, fc, fi, 0.6, 0.42, 0.8, green.lightened(0.12))
 		else:
 			# ель: три плотных яруса хвои
 			_add_cone(fv, fc, fi, 0.95, 0.9, 1.35, green)
@@ -484,29 +654,66 @@ func _add_cone(verts: PackedVector3Array, cols: PackedColorArray, idx: PackedInt
 		idx.append_array([base + 1, base + 1 + i, base + 1 + i + 1])
 
 
-func _make_grass_mesh() -> ArrayMesh:
+## Виды растительности: 0 короткая, 1 высокая, 2 сухая, 3 цветы, 4 папоротник, 5 кустик
+func _make_grass_mesh(kind: int = 0) -> ArrayMesh:
 	var verts := PackedVector3Array()
 	var norms := PackedVector3Array()
 	var cols := PackedColorArray()
 	var idx := PackedInt32Array()
-	var base_c := Color(0.36, 0.66, 0.26)
+
+	var base_c := Color(0.34, 0.6, 0.24)
 	var tip_c := Color(0.52, 0.82, 0.36)
+	var blades := 5
 	var h := 1.0
 	var w := 0.28
-	# пучок из 5 широких лезвий, нормали вверх (освещается солнцем — ярко-зелёная)
-	for i in range(5):
-		var ang := TAU * i / 5.0
+	var lean := 0.0
+	match kind:
+		1:   # высокая трава
+			base_c = Color(0.3, 0.55, 0.2); tip_c = Color(0.58, 0.8, 0.34)
+			blades = 7; h = 1.85; w = 0.22; lean = 0.28
+		2:   # сухая трава
+			base_c = Color(0.55, 0.48, 0.24); tip_c = Color(0.78, 0.7, 0.38)
+			blades = 6; h = 1.25; w = 0.2; lean = 0.35
+		3:   # полевые цветы
+			base_c = Color(0.32, 0.55, 0.22); tip_c = Color(0.9, 0.85, 0.4)
+			blades = 4; h = 0.85; w = 0.14
+		4:   # папоротник — широкие перья
+			base_c = Color(0.2, 0.42, 0.18); tip_c = Color(0.32, 0.6, 0.24)
+			blades = 6; h = 0.95; w = 0.45; lean = 0.55
+		5:   # низкий кустик
+			base_c = Color(0.24, 0.4, 0.18); tip_c = Color(0.34, 0.54, 0.24)
+			blades = 8; h = 1.4; w = 0.5; lean = 0.42
+
+	for i in range(blades):
+		var ang := TAU * i / float(blades) + float(i) * 0.7
 		var side := Vector3(-sin(ang), 0, cos(ang))
+		var tilt := Vector3(cos(ang), 0, sin(ang)) * lean * h
 		var b := verts.size()
 		var p0 := side * w
 		var p1 := -side * w
-		var p2 := -side * w * 0.2 + Vector3(0, h, 0)
-		var p3 := side * w * 0.2 + Vector3(0, h, 0)
+		var p2 := -side * w * 0.2 + Vector3(0, h, 0) + tilt
+		var p3 := side * w * 0.2 + Vector3(0, h, 0) + tilt
 		verts.append_array([p0, p1, p2, p3])
 		norms.append_array([Vector3.UP, Vector3.UP, Vector3.UP, Vector3.UP])
 		cols.append(base_c); cols.append(base_c)
 		cols.append(tip_c); cols.append(tip_c)
 		idx.append_array([b, b + 1, b + 2, b, b + 2, b + 3])
+
+	# цветочные головки
+	if kind == 3:
+		var petals := [Color(0.92, 0.35, 0.42), Color(0.95, 0.85, 0.35), Color(0.7, 0.6, 0.95)]
+		for i in range(3):
+			var a := TAU * i / 3.0
+			var c: Color = petals[i % petals.size()]
+			var cen := Vector3(cos(a) * 0.16, h * 0.95, sin(a) * 0.16)
+			var b2 := verts.size()
+			verts.append_array([cen + Vector3(-0.09, 0, -0.09), cen + Vector3(0.09, 0, -0.09),
+				cen + Vector3(0.09, 0, 0.09), cen + Vector3(-0.09, 0, 0.09)])
+			for j in range(4):
+				norms.append(Vector3.UP)
+				cols.append(c)
+			idx.append_array([b2, b2 + 1, b2 + 2, b2, b2 + 2, b2 + 3])
+
 	var am := ArrayMesh.new()
 	var arrays := []
 	arrays.resize(Mesh.ARRAY_MAX)
@@ -565,11 +772,34 @@ func _vertex_color_material() -> StandardMaterial3D:
 	return m
 
 
-func _grass_material() -> StandardMaterial3D:
-	# трава НЕ освещается — цвет берётся из вершинных цветов напрямую (всегда зелёная)
+func _rock_material() -> StandardMaterial3D:
+	# скачанная PBR-текстура каменистой поверхности
 	var m := StandardMaterial3D.new()
 	m.vertex_color_use_as_albedo = true
-	m.albedo_color = Color(0.4, 0.7, 0.3)
+	m.roughness = 0.95
+	m.metallic = 0.0
+	var alb := "res://textures/rockground_albedo.jpg"
+	if ResourceLoader.exists(alb):
+		m.albedo_texture = load(alb)
+		m.uv1_scale = Vector3(1.4, 1.4, 1.4)
+		m.uv1_triplanar = true
+		m.texture_filter = BaseMaterial3D.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS_ANISOTROPIC
+	var nrm := "res://textures/rockground_normal.jpg"
+	if ResourceLoader.exists(nrm):
+		m.normal_enabled = true
+		m.normal_texture = load(nrm)
+		m.normal_scale = 1.1
+	var rgh := "res://textures/rockground_rough.jpg"
+	if ResourceLoader.exists(rgh):
+		m.roughness_texture = load(rgh)
+	return m
+
+
+func _grass_material() -> StandardMaterial3D:
+	# трава НЕ освещается — цвет из вершин + оттенок инстанса (разный по биомам)
+	var m := StandardMaterial3D.new()
+	m.vertex_color_use_as_albedo = true
+	m.albedo_color = Color(1.0, 1.0, 1.0)
 	m.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
 	m.transparency = BaseMaterial3D.TRANSPARENCY_DISABLED  # строго непрозрачный
 	m.cull_mode = BaseMaterial3D.CULL_DISABLED
@@ -860,6 +1090,54 @@ func _build_water() -> void:
 	w2.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	add_child(w2)
 
+	# --- озёра: отдельные водные диски ---
+	for l in LAKES:
+		var lm := MeshInstance3D.new()
+		var cyl := CylinderMesh.new()
+		cyl.top_radius = float(l[2]) * 0.92
+		cyl.bottom_radius = float(l[2]) * 0.92
+		cyl.height = 0.12
+		cyl.radial_segments = 28
+		lm.mesh = cyl
+		lm.material_override = _water_material(Color(0.10, 0.34, 0.42, 0.8))
+		lm.position = Vector3(l[0], WATER_LEVEL + 0.05, l[1])
+		lm.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		lm.name = "Lake_%d" % int(l[0])
+		add_child(lm)
+
+	# --- реки: лента воды вдоль русла ---
+	for rv in RIVERS:
+		var pts: Array = rv[0]
+		var width: float = rv[1]
+		for i in range(pts.size() - 1):
+			var a: Vector2 = pts[i]
+			var b: Vector2 = pts[i + 1]
+			var seg := b - a
+			var rm := MeshInstance3D.new()
+			var bm := BoxMesh.new()
+			bm.size = Vector3(width * 1.7, 0.12, seg.length() + 2.0)
+			rm.mesh = bm
+			rm.material_override = _water_material(Color(0.12, 0.36, 0.44, 0.75))
+			var mid := (a + b) * 0.5
+			rm.position = Vector3(mid.x, WATER_LEVEL + 0.02, mid.y)
+			rm.rotation.y = atan2(seg.x, seg.y)
+			rm.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+			rm.name = "River_%d_%d" % [i, int(a.x)]
+			add_child(rm)
+
+
+func _water_material(col: Color) -> StandardMaterial3D:
+	var m := StandardMaterial3D.new()
+	m.albedo_color = col
+	m.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	m.roughness = 0.06
+	m.metallic = 0.3
+	m.emission_enabled = true
+	m.emission = Color(0.05, 0.16, 0.22)
+	m.emission_energy = 0.4
+	m.cull_mode = BaseMaterial3D.CULL_DISABLED
+	return m
+
 
 func _build_ground() -> void:
 	# процедурный остров (единый источник высоты _ground_height —
@@ -902,33 +1180,43 @@ func _build_ground() -> void:
 			norms.append(normal)
 			var slope := 1.0 - normal.y  # 0 = ровно, 1 = отвесно
 			var pf := _puddle_factor(wx, wz)
+			var rf := _river_factor(wx, wz)
+			var lf := _lake_factor(wx, wz)
+			var sw := _swamp_factor(wx, wz)
 			var c := grass
 			if h < WATER_LEVEL:
-				# морское дно
 				c = seabed.lerp(Color(0.5, 0.5, 0.44), clampf(-h * 0.1, 0.0, 1.0))
-			elif pf > 0.12:
-				# внутренние озёра
-				c = Color(0.2, 0.45, 0.6).lerp(Color(0.35, 0.6, 0.75), pf)
+			elif pf > 0.12 or lf > 0.75:
+				c = Color(0.2, 0.45, 0.6).lerp(Color(0.35, 0.6, 0.75), maxf(pf, lf))
 			elif mask < 0.35:
-				# песчаный берег
 				c = sand
-			elif h > 18.0:
+			elif h > 26.0:
 				c = snow
-			elif h > 10.0:
+			elif h > 17.0:
+				c = rock.lerp(snow, clampf((h - 17.0) / 9.0, 0.0, 1.0))
+			elif h > 11.0:
 				c = rock
 			elif h > 3.0:
 				c = grass
 			else:
 				c = dark
-			# земляные проплешины в низинах (только на суше)
+			# песок по берегам озёр и рек
+			if lf > 0.45 and lf <= 0.75 and h >= WATER_LEVEL:
+				c = c.lerp(sand, (lf - 0.45) / 0.3 * 0.8)
+			if rf > 0.35 and h >= WATER_LEVEL:
+				c = c.lerp(sand.darkened(0.15), clampf((rf - 0.35) / 0.4, 0.0, 1.0) * 0.7)
+			# болото — тёмная мокрая земля
+			if sw > 0.15 and h >= WATER_LEVEL:
+				c = c.lerp(Color(0.26, 0.28, 0.18), clampf((sw - 0.15) / 0.5, 0.0, 1.0) * 0.85)
+			# грязь в низинах
 			if h < 3.5 and h >= WATER_LEVEL and pf <= 0.12 and mask >= 0.35:
 				c = c.lerp(dirt, _color_noise(wx, wz) * 0.5)
-			# крутые склоны переходят в скалу
-			if slope > 0.28 and h >= WATER_LEVEL and pf <= 0.12:
-				c = c.lerp(rock, clampf((slope - 0.28) / 0.45, 0.0, 1.0))
-			# естественная пятнистость тона
+			# крутые склоны — каменистая земля
+			if slope > 0.24 and h >= WATER_LEVEL and pf <= 0.12:
+				c = c.lerp(rock, clampf((slope - 0.24) / 0.4, 0.0, 1.0))
+			# естественная пятнистость
 			var v := _color_noise(wx * 1.7, wz * 1.7 + 9.0)
-			c = c.lightened((v - 0.5) * 0.14)
+			c = c.lightened((v - 0.5) * 0.16)
 			cols.append(c)
 			# UV для тайлинга PBR-текстуры земли (1 тайл = 8 м, без растяжения)
 			uvs.append(Vector2(wx / 8.0, wz / 8.0))
@@ -1040,34 +1328,59 @@ func _grid_spot(grid_size: float, jitter: float) -> Vector3:
 # ---------- деревья / камни / руды / трава (MultiMesh — оптимизация) ----------
 
 func _build_trees() -> void:
-	# три вида деревьев: 0=ель, 1=лиственное, 2=сухое. Каждый вид — свой MultiMesh
-	# (surface 0 = кора с PBR-текстурой, surface 1 = листва с PBR-текстурой)
+	# 7 видов деревьев, размещение зависит от биома и плотности леса
 	_tree_spots.clear()
 	_trees_mm_list.clear()
-	var counts := [110, 70, 35]   # ели, лиственные, сухие
-	var names := ["TreesPine", "TreesLeafy", "TreesDead"]
-	for species in range(3):
-		var cnt: int = counts[species]
+	# species: 0=большая ель, 1=лиственное, 2=сухое, 3=средняя ель, 4=молодое, 5=поваленное
+	var specs := [
+		{"sp": 0, "name": "TreesPine", "count": 150, "smin": 2.4, "smax": 3.4},
+		{"sp": 3, "name": "TreesPineMid", "count": 110, "smin": 1.4, "smax": 2.2},
+		{"sp": 4, "name": "TreesSapling", "count": 90, "smin": 0.6, "smax": 1.1},
+		{"sp": 1, "name": "TreesLeafy", "count": 95, "smin": 1.2, "smax": 2.3},
+		{"sp": 2, "name": "TreesDead", "count": 55, "smin": 0.9, "smax": 1.7},
+		{"sp": 5, "name": "TreesFallen", "count": 40, "smin": 1.0, "smax": 1.6},
+	]
+	for spec in specs:
+		var sp: int = int(spec["sp"])
+		var cnt: int = int(spec["count"])
 		var mm := MultiMesh.new()
 		mm.transform_format = MultiMesh.TRANSFORM_3D
-		mm.mesh = _make_tree_mesh(species)
-		mm.instance_count = cnt
-		for i in range(cnt):
-			var pos := _grid_spot(24.0, 10.0)
-			var big := _rng.randf() < 0.3
-			var s: float
-			if species == 1:
-				s = _rng.randf_range(1.6, 2.4) if big else _rng.randf_range(0.9, 1.5)
-			elif species == 2:
-				s = _rng.randf_range(0.9, 1.6)
+		mm.mesh = _make_tree_mesh(sp)
+		var spots: Array = []
+		var attempts := 0
+		while spots.size() < cnt and attempts < cnt * 20:
+			attempts += 1
+			var pos := _grid_spot(22.0, 10.0)
+			var bio := biome_at(pos.x, pos.z)
+			if bio == Biome.WATER or bio == Biome.BEACH:
+				continue
+			# плотность зависит от биома: в лесу густо, на равнине редко
+			if _rng.randf() > _tree_density(pos.x, pos.z):
+				continue
+			# сухие деревья — на сухих местах, лиственные — во влажных
+			if sp == 2 and bio == Biome.SWAMP:
+				continue
+			if sp == 1 and bio == Biome.MOUNTAIN:
+				continue
+			spots.append(pos)
+		mm.instance_count = spots.size()
+		for i in range(spots.size()):
+			var pos2: Vector3 = spots[i]
+			var sc := _rng.randf_range(float(spec["smin"]), float(spec["smax"]))
+			var t := Transform3D(Basis(Vector3.UP, _rng.randf() * TAU), pos2)
+			# поваленное дерево лежит на боку
+			if sp == 5:
+				t.basis = t.basis.rotated(Vector3(cos(_rng.randf() * TAU), 0, sin(_rng.randf() * TAU)), PI * 0.46)
+			# лёгкий наклон для естественности
 			else:
-				s = _rng.randf_range(2.2, 3.2) if big else _rng.randf_range(0.8, 1.6)
-			var t := Transform3D(Basis(Vector3.UP, _rng.randf() * TAU), pos)
-			t = t.scaled_local(Vector3(s, s, s))
+				t.basis = t.basis.rotated(Vector3(1, 0, 0), _rng.randf_range(-0.05, 0.05))
+				t.basis = t.basis.rotated(Vector3(0, 0, 1), _rng.randf_range(-0.05, 0.05))
+			t = t.scaled_local(Vector3(sc, sc * _rng.randf_range(0.9, 1.15), sc))
 			mm.set_instance_transform(i, t)
-			_tree_spots.append({"pos": pos, "index": i, "alive": true, "big": big, "mm": mm})
-		# кора и листва — раздельные материалы со скачанными PBR-текстурами
-		# (задаём прямо на поверхностях меша: MultiMesh не поддерживает override по поверхностям)
+			_tree_spots.append({"pos": pos2, "index": i, "alive": true, "big": sc > 2.0, "mm": mm})
+			# коллизия ствола (у поваленного не нужна)
+			if sp != 5:
+				_add_trunk_collision(pos2, 3.0 * sc)
 		var tmesh: ArrayMesh = mm.mesh
 		tmesh.surface_set_material(0, _bark_material())
 		if tmesh.get_surface_count() > 1:
@@ -1075,13 +1388,12 @@ func _build_trees() -> void:
 		var inst := MultiMeshInstance3D.new()
 		inst.multimesh = mm
 		inst.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-		inst.name = names[species]
-		# LOD по дальности: далёкие деревья не рисуются
+		inst.name = String(spec["name"])
 		inst.visibility_range_end = 260.0
 		inst.visibility_range_end_margin = 30.0
 		add_child(inst)
 		_trees_mm_list.append(mm)
-	# --- два скачанных вида деревьев (Quaternius, CC0): берёза и клён ---
+	# --- два скачанных вида (Quaternius, CC0): берёза и клён ---
 	_build_downloaded_trees("res://models/tree_birch.glb", 85, 7.5, 10.5, "TreesBirch")
 	_build_downloaded_trees("res://models/tree_maple.glb", 70, 8.0, 12.0, "TreesMaple")
 	_trees_mm = _trees_mm_list[0] if _trees_mm_list.size() > 0 else null
@@ -1159,88 +1471,202 @@ func _add_trunk_collision(pos: Vector3, height: float) -> void:
 
 
 func _build_rocks() -> void:
-	var mm := MultiMesh.new()
-	mm.transform_format = MultiMesh.TRANSFORM_3D
-	mm.mesh = _make_rock_mesh()
-	mm.instance_count = 160
+	# 4 типа камней: галька, средние, валуны, скальные глыбы — разные размеры и оттенки
 	_rock_spots.clear()
-	for i in range(160):
-		var pos := _grid_spot(24.0, 9.0)
-		var s := _rng.randf_range(0.6, 2.2)
-		var t := Transform3D(Basis(Vector3.UP, _rng.randf() * TAU), pos + Vector3(0, 0.15 * s, 0))
-		t = t.scaled_local(Vector3(s, s * _rng.randf_range(0.6, 1.0), s))
-		mm.set_instance_transform(i, t)
-		_rock_spots.append({"pos": pos, "index": i, "alive": true})
-	var inst := MultiMeshInstance3D.new()
-	inst.multimesh = mm
-	inst.material_override = _terrain_material()
-	inst.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-	inst.visibility_range_end = 220.0
-	inst.visibility_range_end_margin = 30.0
-	inst.name = "Rocks"
-	add_child(inst)
-	_rocks_mm = mm
+	var specs := [
+		{"name": "RocksSmall", "count": 130, "smin": 0.25, "smax": 0.55, "tint": Color(1.05, 1.03, 1.0), "lod": 120.0},
+		{"name": "RocksMid", "count": 90, "smin": 0.7, "smax": 1.4, "tint": Color(1.0, 1.0, 1.0), "lod": 190.0},
+		{"name": "RocksBoulder", "count": 55, "smin": 1.8, "smax": 3.2, "tint": Color(0.92, 0.92, 0.95), "lod": 260.0},
+		{"name": "RocksCliff", "count": 30, "smin": 3.6, "smax": 6.5, "tint": Color(0.86, 0.87, 0.9), "lod": 340.0},
+	]
+	for spec in specs:
+		var cnt: int = int(spec["count"])
+		var mm := MultiMesh.new()
+		mm.transform_format = MultiMesh.TRANSFORM_3D
+		mm.use_colors = true
+		mm.mesh = _make_rock_mesh()
+		var spots: Array = []
+		var attempts := 0
+		while spots.size() < cnt and attempts < cnt * 16:
+			attempts += 1
+			var pos := _grid_spot(20.0, 9.0)
+			var bio := biome_at(pos.x, pos.z)
+			if bio == Biome.WATER:
+				continue
+			# камни чаще у гор и на склонах, реже на равнине
+			var chance := 0.0
+			match bio:
+				Biome.MOUNTAIN: chance = 0.95
+				Biome.BEACH: chance = 0.45
+				Biome.FOREST: chance = 0.4
+				Biome.PLAIN: chance = 0.22
+				Biome.SWAMP: chance = 0.2
+			# крупные глыбы — только в горах и на скалистых участках
+			if float(spec["smin"]) >= 1.8 and bio != Biome.MOUNTAIN and _rng.randf() > 0.25:
+				continue
+			if _rng.randf() > chance:
+				continue
+			spots.append(pos)
+		mm.instance_count = spots.size()
+		for i in range(spots.size()):
+			var pos2: Vector3 = spots[i]
+			var sc := _rng.randf_range(float(spec["smin"]), float(spec["smax"]))
+			var t := Transform3D(Basis(Vector3.UP, _rng.randf() * TAU), pos2 + Vector3(0, 0.12 * sc, 0))
+			# случайный наклон — камни лежат по-разному
+			t.basis = t.basis.rotated(Vector3(1, 0, 0), _rng.randf_range(-0.25, 0.25))
+			t.basis = t.basis.rotated(Vector3(0, 0, 1), _rng.randf_range(-0.25, 0.25))
+			t = t.scaled_local(Vector3(sc * _rng.randf_range(0.8, 1.25), sc * _rng.randf_range(0.6, 1.0), sc * _rng.randf_range(0.8, 1.25)))
+			mm.set_instance_transform(i, t)
+			var base_t: Color = spec["tint"]
+			var vn := _color_noise(pos2.x * 1.3, pos2.z * 1.3)
+			mm.set_instance_color(i, base_t.lightened((vn - 0.5) * 0.22))
+			_rock_spots.append({"pos": pos2, "index": i, "alive": true, "mm": mm})
+			# крупные камни получают коллизию — сквозь них не пройти
+			if sc >= 1.6:
+				_add_rock_collision(pos2, sc)
+		var inst := MultiMeshInstance3D.new()
+		inst.multimesh = mm
+		inst.material_override = _rock_material()
+		inst.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		inst.visibility_range_end = float(spec["lod"])
+		inst.visibility_range_end_margin = float(spec["lod"]) * 0.15
+		inst.name = String(spec["name"])
+		add_child(inst)
+	_rocks_mm = null
+
+
+func _add_rock_collision(pos: Vector3, scale: float) -> void:
+	var body := StaticBody3D.new()
+	body.collision_layer = 1
+	body.collision_mask = 0
+	var cs := CollisionShape3D.new()
+	var sp := SphereShape3D.new()
+	sp.radius = scale * 0.55
+	cs.shape = sp
+	cs.position = Vector3(0, scale * 0.35, 0)
+	body.add_child(cs)
+	body.position = pos
+	add_child(body)
 
 
 func _build_grass() -> void:
-	# ТРАВА: основание каждого пучка утоплено в землю (никогда не висит в воздухе).
-	# Ставим только на пологой суше выше воды, вдали от берега.
-	var mesh := _make_grass_mesh()
+	# РАСТИТЕЛЬНОСТЬ: 6 видов, разные биомы, случайный поворот и масштаб.
+	# Основание каждого пучка утоплено в землю — ничего не парит.
+	var kinds := [
+		{"kind": 0, "name": "GrassShort", "count": 1500, "dist": 80.0},
+		{"kind": 1, "name": "GrassTall", "count": 900, "dist": 90.0},
+		{"kind": 2, "name": "GrassDry", "count": 600, "dist": 85.0},
+		{"kind": 3, "name": "Flowers", "count": 420, "dist": 70.0},
+		{"kind": 4, "name": "Ferns", "count": 500, "dist": 80.0},
+		{"kind": 5, "name": "Bushes", "count": 380, "dist": 110.0},
+	]
+	for spec in kinds:
+		_build_plant_layer(int(spec["kind"]), String(spec["name"]), int(spec["count"]), float(spec["dist"]))
+
+
+func _build_plant_layer(kind: int, node_name: String, target: int, lod_dist: float) -> void:
 	var mm := MultiMesh.new()
 	mm.transform_format = MultiMesh.TRANSFORM_3D
-	mm.mesh = mesh
-	var target := 1400
+	mm.use_colors = true
+	mm.mesh = _make_grass_mesh(kind)
 	var placed: Array = []
+	var tints: Array = []
 	var attempts := 0
-	while placed.size() < target and attempts < target * 8:
+	while placed.size() < target and attempts < target * 14:
 		attempts += 1
 		var ang := _rng.randf() * TAU
-		var r := _rng.randf_range(6.0, ISLAND_R - 45.0)
+		var r := _rng.randf_range(6.0, ISLAND_R - 30.0)
 		var x := cos(ang) * r
 		var z := sin(ang) * r
 		var h := _surface_height(x, z)
-		# только уверенно над водой (не на пляже/в воде)
-		if h < WATER_LEVEL + 1.2:
+		if h < WATER_LEVEL + 0.5:
 			continue
-		# не на крутых склонах — иначе широкий пучок торчит углами
+		var bio := biome_at(x, z)
+		# --- где какой вид растёт ---
+		var chance := 0.0
+		match kind:
+			0:   # короткая трава — почти везде, кроме пляжа и гор
+				chance = {Biome.FOREST: 0.75, Biome.PLAIN: 0.95, Biome.SWAMP: 0.6,
+					Biome.MOUNTAIN: 0.12, Biome.BEACH: 0.05}.get(bio, 0.0)
+			1:   # высокая трава — равнина и болото
+				chance = {Biome.PLAIN: 0.9, Biome.SWAMP: 0.85, Biome.FOREST: 0.3,
+					Biome.MOUNTAIN: 0.03, Biome.BEACH: 0.02}.get(bio, 0.0)
+			2:   # сухая трава — сухие равнины, склоны гор, у пляжа
+				chance = {Biome.PLAIN: 0.5, Biome.MOUNTAIN: 0.35, Biome.BEACH: 0.3,
+					Biome.FOREST: 0.1, Biome.SWAMP: 0.05}.get(bio, 0.0)
+			3:   # цветы — только равнины и светлый лес
+				chance = {Biome.PLAIN: 0.8, Biome.FOREST: 0.25, Biome.SWAMP: 0.1}.get(bio, 0.0)
+			4:   # папоротники — лес и болото
+				chance = {Biome.FOREST: 0.9, Biome.SWAMP: 0.7, Biome.PLAIN: 0.1}.get(bio, 0.0)
+			5:   # кусты — лес, опушки, болото
+				chance = {Biome.FOREST: 0.8, Biome.SWAMP: 0.5, Biome.PLAIN: 0.3,
+					Biome.MOUNTAIN: 0.15}.get(bio, 0.0)
+		if _rng.randf() > chance:
+			continue
+		# не растёт на крутых склонах и обрывах
 		var e := 1.2
 		var nx := _surface_height(x + e, z) - _surface_height(x - e, z)
 		var nz := _surface_height(x, z + e) - _surface_height(x, z - e)
-		var slope := Vector2(nx, nz).length() / (2.0 * e)
-		if slope > 0.35:
+		if Vector2(nx, nz).length() / (2.0 * e) > 0.35:
 			continue
-		# отбраковка резких перепадов рядом (обрывы) — трава не должна тонуть в стене
-		var around_max := maxf(maxf(_surface_height(x + e, z), _surface_height(x - e, z)),
+		var amax: float = maxf(maxf(_surface_height(x + e, z), _surface_height(x - e, z)),
 			maxf(_surface_height(x, z + e), _surface_height(x, z - e)))
-		var around_min := minf(minf(_surface_height(x + e, z), _surface_height(x - e, z)),
+		var amin: float = minf(minf(_surface_height(x + e, z), _surface_height(x - e, z)),
 			minf(_surface_height(x, z + e), _surface_height(x, z - e)))
-		if around_max - around_min > 1.2:
+		if amax - amin > 1.2:
+			continue
+		# не растёт вплотную к камням и деревьям
+		var blocked := false
+		for rk in _rock_spots:
+			if (rk["pos"] as Vector3).distance_to(Vector3(x, h, z)) < 1.6:
+				blocked = true
+				break
+		if blocked:
 			continue
 		placed.append(Vector3(x, h, z))
-	# ВАЖНО: instance_count задаём ДО записи трансформов (иначе буфер обнуляется)
+		# --- оттенок зависит от местности ---
+		var tint := Color(1, 1, 1)
+		match bio:
+			Biome.FOREST:
+				tint = Color(0.78, 0.88, 0.72)          # темнее в лесу
+			Biome.SWAMP:
+				tint = Color(0.72, 0.85, 0.6)           # болотный, тусклее
+			Biome.MOUNTAIN:
+				tint = Color(0.85, 0.82, 0.7)           # выгоревшая
+			Biome.BEACH:
+				tint = Color(1.0, 0.95, 0.78)           # сухая у песка
+			_:
+				tint = Color(1.0, 1.0, 0.92)            # ярче на открытом
+		# влажные места — сочнее
+		if _river_factor(x, z) > 0.2 or _lake_factor(x, z) > 0.3 or _swamp_factor(x, z) > 0.2:
+			tint = tint.lerp(Color(0.85, 1.05, 0.8), 0.5)
+		var vn := _color_noise(x * 0.9, z * 0.9 + kind * 7.0)
+		tint = tint.lightened((vn - 0.5) * 0.18)
+		tints.append(tint)
+
 	mm.instance_count = placed.size()
 	for i in range(placed.size()):
 		var p: Vector3 = placed[i]
-		var s := _rng.randf_range(0.7, 1.5)
-		# КЛЮЧЕВОЕ: опускаем основание НИЖЕ поверхности на величину, зависящую от масштаба —
-		# трава «врастает» в землю и не может парить даже на неровностях
-		var sink := 0.12 * s
+		var sc := _rng.randf_range(0.7, 1.5)
+		if kind == 5:
+			sc = _rng.randf_range(0.8, 1.6)
+		# основание утоплено в землю — растение не может парить
+		var sink := 0.12 * sc
 		var t := Transform3D(Basis(Vector3.UP, _rng.randf() * TAU), Vector3(p.x, p.y - sink, p.z))
-		t = t.scaled_local(Vector3(s, s, s))
+		t = t.scaled_local(Vector3(sc, sc * _rng.randf_range(0.85, 1.2), sc))
 		mm.set_instance_transform(i, t)
+		mm.set_instance_color(i, tints[i])
+
 	var inst := MultiMeshInstance3D.new()
 	inst.multimesh = mm
 	inst.material_override = _grass_material()
 	inst.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-	# дальность прорисовки травы (оптимизация: далёкая трава не рисуется)
-	inst.visibility_range_end = 85.0
-	inst.visibility_range_end_margin = 15.0
-	inst.name = "Grass"
+	inst.visibility_range_end = lod_dist
+	inst.visibility_range_end_margin = lod_dist * 0.2
+	inst.name = node_name
 	add_child(inst)
 
 
-
-# LOD: скрывать мелкие объекты на расстоянии (сильно снижает draw calls)
 func _set_lod(node: Node3D, dist: float) -> void:
 	for mi in node.find_children("*", "GeometryInstance3D", true, false):
 		var g: GeometryInstance3D = mi
@@ -1465,6 +1891,146 @@ func _build_monuments() -> void:
 			"parking": _build_parking(mp.x, mp.z)
 			"factory": _build_factory(mp.x, mp.z)
 			"npp": _build_npp(mp.x, mp.z)
+	_build_landmarks()
+
+
+## Небольшие заброшенные локации, разбросанные по карте
+func _build_landmarks() -> void:
+	var spots := [
+		{"kind": "gas", "pos": Vector2(-60.0, -170.0)},
+		{"kind": "farm", "pos": Vector2(150.0, 300.0)},
+		{"kind": "tower", "pos": Vector2(-330.0, 150.0)},
+		{"kind": "checkpoint", "pos": Vector2(60.0, -20.0)},
+		{"kind": "village", "pos": Vector2(-160.0, -300.0)},
+		{"kind": "camp", "pos": Vector2(320.0, -30.0)},
+		{"kind": "house", "pos": Vector2(-300.0, 330.0)},
+	]
+	for sp in spots:
+		var v: Vector2 = sp["pos"]
+		if not _on_land(v.x, v.y):
+			continue
+		var y := _surface_height(v.x, v.y)
+		var root := Node3D.new()
+		root.position = Vector3(v.x, y, v.y)
+		root.rotation.y = _rng.randf() * TAU
+		add_child(root)
+		match String(sp["kind"]):
+			"gas": _lm_gas(root, v)
+			"farm": _lm_farm(root, v)
+			"tower": _lm_tower(root, v)
+			"checkpoint": _lm_checkpoint(root, v)
+			"village": _lm_village(root, v)
+			"camp": _lm_camp(root, v)
+			"house": _lm_house(root, v)
+		_set_lod(root, 330.0)
+
+
+func _lm_wall(root: Node3D, size: Vector3, pos: Vector3, c: Color) -> void:
+	var mi := _box_at(pos, size, c, root)
+	var body := StaticBody3D.new()
+	body.collision_layer = 1
+	body.collision_mask = 0
+	var cs := CollisionShape3D.new()
+	var bx := BoxShape3D.new()
+	bx.size = size
+	cs.shape = bx
+	cs.position = pos
+	body.add_child(cs)
+	root.add_child(body)
+
+
+func _lm_gas(root: Node3D, v: Vector2) -> void:
+	# заброшенная заправка: навес, колонки, будка
+	var concrete := Color(0.55, 0.54, 0.5)
+	_box_at(Vector3(0, 0.05, 0), Vector3(16, 0.1, 12), concrete.darkened(0.15), root)
+	for sx in [-5.0, 5.0]:
+		_lm_wall(root, Vector3(0.5, 4.5, 0.5), Vector3(sx, 2.25, -3.0), concrete)
+		_lm_wall(root, Vector3(0.5, 4.5, 0.5), Vector3(sx, 2.25, 3.0), concrete)
+	_box_at(Vector3(0, 4.7, 0), Vector3(13, 0.4, 9), Color(0.62, 0.3, 0.22), root)
+	for sx in [-2.2, 2.2]:
+		_lm_wall(root, Vector3(0.8, 1.5, 1.2), Vector3(sx, 0.85, 0), Color(0.4, 0.42, 0.44))
+	_lm_wall(root, Vector3(5, 3.2, 4), Vector3(-9, 1.6, 2), concrete.darkened(0.1))
+	_add_lootbox(v.x + 8.0, v.y + 4.0)
+
+
+func _lm_farm(root: Node3D, v: Vector2) -> void:
+	# разрушенная ферма: амбар с провалившейся крышей, забор
+	var wood := Color(0.45, 0.3, 0.18)
+	_lm_wall(root, Vector3(12, 5, 0.4), Vector3(0, 2.5, -5), wood)
+	_lm_wall(root, Vector3(0.4, 5, 10), Vector3(-6, 2.5, 0), wood)
+	_lm_wall(root, Vector3(0.4, 5, 10), Vector3(6, 2.5, 0), wood.darkened(0.1))
+	_box_at(Vector3(-2, 5.2, 0), Vector3(9, 0.35, 8), wood.darkened(0.2), root).rotation.z = 0.18
+	for i in range(8):
+		_box_at(Vector3(-9 + i * 2.4, 0.7, 7.0), Vector3(0.16, 1.4, 0.16), wood.darkened(0.15), root)
+	_add_lootbox(v.x - 3.0, v.y + 2.0)
+
+
+func _lm_tower(root: Node3D, v: Vector2) -> void:
+	# вышка связи
+	var metal := Color(0.42, 0.44, 0.46)
+	for i in range(4):
+		var sx: float = -1.6 if i < 2 else 1.6
+		var sz: float = -1.6 if i % 2 == 0 else 1.6
+		_lm_wall(root, Vector3(0.3, 18, 0.3), Vector3(sx, 9, sz), metal)
+	for lvl in range(5):
+		var yy: float = 3.0 + lvl * 3.5
+		_box_at(Vector3(0, yy, 0), Vector3(3.6, 0.18, 3.6), metal.darkened(0.1), root)
+	_box_at(Vector3(0, 18.6, 0), Vector3(1.2, 1.4, 1.2), Color(0.75, 0.2, 0.18), root)
+	_add_lootbox(v.x + 3.0, v.y + 3.0)
+
+
+func _lm_checkpoint(root: Node3D, v: Vector2) -> void:
+	# военный блокпост: бетонные блоки, мешки, шлагбаум
+	var concrete := Color(0.5, 0.5, 0.47)
+	for i in range(5):
+		_lm_wall(root, Vector3(2.4, 1.2, 1.0), Vector3(-6 + i * 3.0, 0.6, -4), concrete)
+	for i in range(4):
+		_lm_wall(root, Vector3(2.4, 1.2, 1.0), Vector3(-4 + i * 3.0, 0.6, 4), concrete.darkened(0.08))
+	_lm_wall(root, Vector3(4, 3, 4), Vector3(8, 1.5, 0), Color(0.35, 0.4, 0.32))
+	_box_at(Vector3(0, 1.4, 0), Vector3(9, 0.25, 0.25), Color(0.8, 0.2, 0.15), root)
+	_add_lootbox(v.x + 6.0, v.y - 2.0)
+
+
+func _lm_village(root: Node3D, v: Vector2) -> void:
+	# небольшая деревня: несколько домиков
+	for i in range(4):
+		var a := TAU * i / 4.0 + 0.4
+		var dx: float = cos(a) * 11.0
+		var dz: float = sin(a) * 11.0
+		var wood := Color(0.42, 0.3, 0.18).lightened(_rng.randf() * 0.12)
+		_lm_wall(root, Vector3(6, 3.2, 0.35), Vector3(dx, 1.6, dz - 2.5), wood)
+		_lm_wall(root, Vector3(6, 3.2, 0.35), Vector3(dx, 1.6, dz + 2.5), wood)
+		_lm_wall(root, Vector3(0.35, 3.2, 5), Vector3(dx - 2.8, 1.6, dz), wood)
+		_box_at(Vector3(dx, 3.6, dz), Vector3(6.6, 0.4, 5.6), Color(0.5, 0.26, 0.2), root)
+	_add_lootbox(v.x, v.y)
+	_add_lootbox(v.x + 12.0, v.y + 6.0)
+
+
+func _lm_camp(root: Node3D, v: Vector2) -> void:
+	# заброшенный лагерь: палатки, костровище, ящики
+	for i in range(3):
+		var a := TAU * i / 3.0
+		var dx: float = cos(a) * 5.0
+		var dz: float = sin(a) * 5.0
+		_lm_wall(root, Vector3(3.2, 2.0, 3.2), Vector3(dx, 1.0, dz), Color(0.32, 0.34, 0.26))
+	for i in range(6):
+		var a2 := TAU * i / 6.0
+		_box_at(Vector3(cos(a2) * 1.2, 0.12, sin(a2) * 1.2), Vector3(0.4, 0.24, 0.4), Color(0.35, 0.35, 0.36), root)
+	_add_lootbox(v.x + 4.0, v.y + 4.0)
+
+
+func _lm_house(root: Node3D, v: Vector2) -> void:
+	# заброшенный дом с провалившейся стеной
+	var wood := Color(0.44, 0.32, 0.2)
+	_lm_wall(root, Vector3(9, 3.6, 0.4), Vector3(0, 1.8, -4), wood)
+	_lm_wall(root, Vector3(0.4, 3.6, 8), Vector3(-4.5, 1.8, 0), wood)
+	_lm_wall(root, Vector3(4, 3.6, 0.4), Vector3(-2.5, 1.8, 4), wood.darkened(0.1))
+	_box_at(Vector3(0, 3.9, 0), Vector3(9.6, 0.4, 8.6), Color(0.4, 0.24, 0.18), root)
+	# обломки
+	for i in range(5):
+		_box_at(Vector3(_rng.randf_range(-3, 5), 0.15, _rng.randf_range(-3, 5)),
+			Vector3(_rng.randf_range(0.6, 1.8), 0.3, _rng.randf_range(0.6, 1.8)), wood.darkened(0.25), root)
+	_add_lootbox(v.x + 2.0, v.y + 1.0)
 
 
 func _add_monument_model(path: String, x: float, z: float) -> Node3D:
@@ -1656,14 +2222,34 @@ func _build_hud() -> void:
 
 
 func _spawn_animals() -> void:
-	for i in range(6):
-		_spawn_animal(0)
-	for i in range(4):
-		_spawn_animal(1)
-	for i in range(3):
-		_spawn_animal(2)
-	for i in range(2):
-		_spawn_animal(3)
+	# животные появляются в своих зонах, а не где попало
+	# kind: 0=курица, 1=олень, 2=кабан, 3=медведь
+	var plan := [
+		{"kind": 1, "count": 7, "biomes": [Biome.FOREST, Biome.PLAIN]},         # олени
+		{"kind": 2, "count": 6, "biomes": [Biome.FOREST, Biome.PLAIN, Biome.SWAMP]},  # кабаны
+		{"kind": 3, "count": 4, "biomes": [Biome.FOREST, Biome.MOUNTAIN]},      # медведи
+		{"kind": 0, "count": 8, "biomes": [Biome.PLAIN, Biome.BEACH, Biome.FOREST]},  # курицы
+	]
+	for spec in plan:
+		var placed := 0
+		var attempts := 0
+		while placed < int(spec["count"]) and attempts < 300:
+			attempts += 1
+			var pos := _random_spot(40.0)     # не ближе 40 м к центру спавна игрока
+			var bio := biome_at(pos.x, pos.z)
+			if not (bio in spec["biomes"]):
+				continue
+			_spawn_animal_at(int(spec["kind"]), pos)
+			placed += 1
+
+
+func _spawn_animal_at(kind: int, pos: Vector3) -> void:
+	var a := CharacterBody3D.new()
+	a.set_script(AnimalScr)
+	a.position = Vector3(pos.x, pos.y + 0.1, pos.z)
+	add_child(a)
+	a.setup(kind)
+	a.died.connect(_on_animal_died)
 
 
 func _spawn_animal(kind: int) -> void:
